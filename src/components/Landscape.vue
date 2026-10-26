@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { useLoop, useTres } from '@tresjs/core'
-import { Sky } from '@tresjs/cientos'
+import { useLoop, useTres } from '@tresjs/core/webgpu'
 import { Color, Fog, Object3D } from 'three'
 import { computed, ref, watch } from 'vue'
-import { createTextures } from '../textures'
+import { createSkyTextures, createTextures } from '../textures'
 import { BARREL_LITERS, water } from '../waterState'
 
 const tex = createTextures()
+const skyTex = createSkyTextures()
 
 // The house is built at its original size in a group, then scaled up by H
 const H = 1.25
@@ -302,8 +302,8 @@ const pumpOn = computed(() => water.sinkTap || water.flushT > 0)
 // Light and sky follow the weather
 const sunIntensity = computed(() => 2.8 - 1.9 * weather.value)
 const skyLightIntensity = computed(() => 0.8 - 0.1 * weather.value)
-const turbidity = computed(() => 2 + 18 * weather.value)
-const rayleigh = computed(() => 2.6 - 2.2 * weather.value)
+const clearSkyOpacity = computed(() => 1 - weather.value)
+const sunDiscPosition = sunPosition.map(v => v * 9.5) as [number, number, number]
 
 const hex = (value: number) => Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, '0')
 // Wet surfaces get darker (multiplied with their texture) and shinier
@@ -399,12 +399,31 @@ const ROCKS = [
 
 <template>
   <!-- sky and light -->
-  <Sky
-    :elevation="SUN_ELEVATION"
-    :azimuth="SUN_AZIMUTH"
-    :turbidity="turbidity"
-    :rayleigh="rayleigh"
-  />
+  <!-- clear sky, the overcast sky fades in over it while it rains -->
+  <TresMesh :render-order="-3">
+    <TresSphereGeometry :args="[500, 32, 16]" />
+    <TresMeshBasicMaterial :map="skyTex.clear" :side="1" :fog="false" :tone-mapped="false" :depth-write="false" />
+  </TresMesh>
+  <TresMesh :render-order="-2">
+    <TresSphereGeometry :args="[495, 32, 16]" />
+    <TresMeshBasicMaterial
+      :map="skyTex.overcast"
+      :side="1"
+      :fog="false"
+      :tone-mapped="false"
+      :depth-write="false"
+      transparent
+      :opacity="weather"
+    />
+  </TresMesh>
+  <TresMesh :position="sunDiscPosition" :render-order="-1">
+    <TresSphereGeometry :args="[14, 24, 16]" />
+    <TresMeshBasicMaterial color="#fff6dc" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="clearSkyOpacity" />
+  </TresMesh>
+  <TresMesh :position="sunDiscPosition" :render-order="-1">
+    <TresSphereGeometry :args="[34, 24, 16]" />
+    <TresMeshBasicMaterial color="#fff1c8" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="clearSkyOpacity * 0.18" />
+  </TresMesh>
   <TresHemisphereLight
     :args="['#cfe6ff', '#5c7a46']"
     :intensity="skyLightIntensity"

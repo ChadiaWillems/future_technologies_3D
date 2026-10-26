@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { TresCanvas } from '@tresjs/core'
-import { OrbitControls } from '@tresjs/cientos'
+import { TresCanvas } from '@tresjs/core/webgpu'
+import { OrbitControls } from '@tresjs/cientos/webgpu'
 import { computed } from 'vue'
 import Landscape from './components/Landscape.vue'
 import { BARREL_LITERS, water } from './waterState'

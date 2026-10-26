@@ -216,3 +216,29 @@ export function createTextures() {
 
   return { grass, plaster, roof, wood, barrel, stone, bark, leaves, soil, brick }
 }
+
+// Sky dome gradients (zenith at the top, horizon in the middle). A plain textured sphere works the same
+// in the WebGL and WebGPU renderers, unlike a GLSL sky shader. The horizon colour matches the fog.
+function skyGradient(zenith: string, high: string, horizon: string) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 4
+  canvas.height = 256
+  const c = canvas.getContext('2d')!
+  const gradient = c.createLinearGradient(0, 0, 0, 256)
+  gradient.addColorStop(0, zenith)
+  gradient.addColorStop(0.3, high)
+  gradient.addColorStop(0.5, horizon)
+  gradient.addColorStop(1, horizon)
+  c.fillStyle = gradient
+  c.fillRect(0, 0, 4, 256)
+  const texture = new CanvasTexture(canvas)
+  texture.colorSpace = SRGBColorSpace
+  return texture
+}
+
+export function createSkyTextures() {
+  return {
+    clear: skyGradient('#2f74c8', '#86b9ea', '#cfe0ea'),
+    overcast: skyGradient('#59636e', '#7d8791', '#8d98a3'),
+  }
+}
