@@ -2,11 +2,14 @@
 import { useLoop, useTres } from '@tresjs/core/webgpu'
 import { Color, Fog, Object3D } from 'three'
 import { computed, ref, watch } from 'vue'
-import { createSkyTextures, createTextures } from '../textures'
-import { BARREL_LITERS, water } from '../waterState'
+import { weatherData } from '../liveController'
+import { formatLocal, radiationSinceMidnight, sampleWeather, skyAt } from '../liveData'
+import { createSky, createSolarTexture, createTextures } from '../textures'
+import { BARREL_LITERS, env, live, water } from '../waterState'
 
 const tex = createTextures()
-const skyTex = createSkyTextures()
+const sky = createSky()
+const solarTex = createSolarTexture()
 
 // The house is built at its original size in a group, then scaled up by H
 const H = 1.25
@@ -56,15 +59,35 @@ const TAP_Y = 0.3
 const TAP_DROPS = 30
 const TAP_FALL_TIME = 0.24
 
-// Sun: direction used by both the sky and the shadow-casting light
-const SUN_ELEVATION = 35
-const SUN_AZIMUTH = 34
-const sunPosition: [number, number, number] = [
-  40 * Math.cos((SUN_ELEVATION * Math.PI) / 180) * Math.sin((SUN_AZIMUTH * Math.PI) / 180),
-  40 * Math.sin((SUN_ELEVATION * Math.PI) / 180),
-  40 * Math.cos((SUN_ELEVATION * Math.PI) / 180) * Math.cos((SUN_AZIMUTH * Math.PI) / 180),
-]
+// Rain that lands on the roof ends up in the barrel (1 mm on 1 m² is 1 litre)
+const ROOF_AREA = (2 * ROOF_HALF) ** 2
+const RUNOFF = 0.8
+const RAIN_THRESHOLD = 0.05 // mm per hour that counts as "raining"
 
+// Solar panels on the south roof face: 5 panels of 0.75 x 0.7 (before scaling by H)
+const PANEL_AREA = 5 * 0.75 * 0.7 * H * H
+const PANEL_EFFICIENCY = 0.2
+const ROOF_SLOPE = Math.atan(2 / (3 / Math.SQRT2))
+const solarPanels = [
+  { x: -0.8, z: 1.82 },
+  { x: 0, z: 1.82 },
+  { x: 0.8, z: 1.82 },
+  { x: -0.4, z: 1.22 },
+  { x: 0.4, z: 1.22 },
+].map(({ x, z }) => {
+  const surface = 2 + 2 * (1 - z / (3 / Math.SQRT2))
+  // lift the panel 2 cm above the roof, along the roof's normal
+  return { p: [x, surface + 0.02 * Math.cos(ROOF_SLOPE), z + 0.02 * Math.sin(ROOF_SLOPE)] as [number, number, number] }
+})
+
+const STAR_COUNT = 400
+
+// True while real weather data is loaded and driving the scene
+const liveOn = computed(() => live.enabled && live.status === 'ready' && weatherData.value !== null)
+
+// Wind pushes the falling rain sideways (units per second)
+let windVx = 0
+let windVz = 0
 const puddle = ref(0)
 const cistern = ref(1) // water level in the toilet cistern, 0..1
 const weather = ref(0) // 0 = sunny, 1 = rainy (eases toward the current weather)
@@ -117,7 +140,10 @@ function onceOnClick(action: () => void) {
   }
 }
 
-const toggleRain = onceOnClick(() => { water.raining = !water.raining })
+const toggleRain = onceOnClick(() => {
+  if (live.enabled) { return } // in real-data mode the weather comes from Open-Meteo
+  water.raining = !water.raining
+})
 const toggleGardenTap = onceOnClick(() => { water.gardenTap = water.gardenTap ? false : water.fill > 0 })
 const toggleSinkTap = onceOnClick(() => {
   if (!water.cutaway) { return }
@@ -145,6 +171,8 @@ function drain(amount: number) {
 function updateDrop(drop: typeof dropData[number], delta: number) {
   if (drop.state === 'falling') {
     drop.y -= drop.speed * delta
+    drop.x += windVx * delta
+    drop.z += windVz * delta
     const surface = surfaceHeight(drop.x, drop.z)
     if (drop.y >= surface) { return }
     if (surface === 0) {
@@ -203,7 +231,8 @@ function updateDrop(drop: typeof dropData[number], delta: number) {
     drop.y -= PIPE_SPEED * delta
     if (drop.y <= BARREL_SCALE * (WATER_BASE + WATER_HEIGHT * water.fill)) {
       if (water.fill < 1) {
-        water.fill = Math.min(1, water.fill + FILL_PER_DROP)
+        // with real data the barrel is filled from the measured rainfall instead (see updateEnvironment)
+        if (!liveOn.value) { water.fill = Math.min(1, water.fill + FILL_PER_DROP) }
         respawn(drop)
       }
       else {
@@ -235,27 +264,130 @@ function updateDrop(drop: typeof dropData[number], delta: number) {
   }
 }
 
-// Fog hides the edge of the world; it gets thicker and greyer when it rains
+const DEG = Math.PI / 180
+const smooth = (edge0: number, edge1: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
+
+// Fill `env` with what the scene should react to: real data when it is loaded, the old manual behaviour otherwise
+function updateEnvironment(delta: number) {
+  const data = weatherData.value
+  if (liveOn.value && data) {
+    const hours = live.playing ? delta / live.secondsPerHour : 0
+    if (live.playing) {
+      live.time += hours * 3_600_000
+      if (live.time > live.end) { live.time = live.start }
+    }
+    const w = sampleWeather(data, live.time)
+    const astro = skyAt(new Date(live.time), data.place)
+    env.sunAltitude = astro.sunAltitude
+    env.sunAzimuth = astro.sunAzimuth
+    env.moonAltitude = astro.moonAltitude
+    env.moonAzimuth = astro.moonAzimuth
+    env.moonLit = astro.moonLit
+    env.temperature = w.temperature
+    env.precipitation = w.precipitation
+    env.cloud = w.cloud
+    env.wind = w.wind
+    env.windDirection = w.windDirection
+    env.radiation = w.radiation
+    env.solarWatts = w.radiation * PANEL_AREA * PANEL_EFFICIENCY
+    env.solarKWh = (radiationSinceMidnight(data, live.time) * PANEL_AREA * PANEL_EFFICIENCY) / 1000
+    env.timeLabel = formatLocal(data, live.time)
+
+    water.raining = w.precipitation >= RAIN_THRESHOLD
+    // the measured rain on the roof runs into the barrel (only while the time-lapse is playing)
+    water.fill = Math.min(1, water.fill + (w.precipitation * hours * ROOF_AREA * RUNOFF) / BARREL_LITERS)
+  }
+  else {
+    env.sunAltitude = 35
+    env.sunAzimuth = 146
+    env.moonAltitude = -30
+    env.temperature = 14
+    env.precipitation = water.raining ? 3 : 0
+    env.cloud = weather.value * 100
+    env.wind = 2.5
+    env.windDirection = 250
+    env.radiation = 850 * Math.sin(35 * DEG) * (1 - 0.85 * weather.value)
+    env.solarWatts = env.radiation * PANEL_AREA * PANEL_EFFICIENCY
+    env.solarKWh = 0
+    env.timeLabel = ''
+  }
+}
+
+// Sky gradient colours (zenith, high, horizon) for night, day, golden hour and overcast
+const SKY = {
+  night: ['#030712', '#0a1330', '#17233f'],
+  day: ['#2f74c8', '#86b9ea', '#cfe0ea'],
+  golden: ['#46609e', '#e0a07c', '#f6c590'],
+  overcast: ['#59636e', '#7d8791', '#8d98a3'],
+}
+function skyColor(stop: 0 | 1 | 2, daylight: number, golden: number, overcast: number) {
+  const color = new Color(SKY.night[stop]).lerp(new Color(SKY.day[stop]), daylight)
+  color.lerp(new Color(SKY.golden[stop]), golden)
+  const grey = new Color(SKY.overcast[stop]).multiplyScalar(0.12 + 0.88 * daylight)
+  return color.lerp(grey, overcast)
+}
+
+// Fog hides the edge of the world; its colour follows the horizon of the sky
 const { scene } = useTres()
-const FOG_CLEAR = new Color('#cfe0ea')
-const FOG_RAIN = new Color('#8d98a3')
+const horizonColor = new Color('#cfe0ea')
 watch(scene, (s) => {
-  if (s && !s.fog) { s.fog = new Fog(FOG_CLEAR.clone(), 40, 120) }
+  if (s && !s.fog) { s.fog = new Fog(horizonColor.clone(), 40, 120) }
 }, { immediate: true })
+
+let skyTimer = 1
+function paintSky(delta: number) {
+  skyTimer += delta
+  if (skyTimer < 0.12) { return }
+  skyTimer = 0
+  const daylight = smooth(-8, 10, env.sunAltitude)
+  const golden = Math.exp(-(((env.sunAltitude - 2) / 9) ** 2)) * (1 - 0.6 * weather.value)
+  const overcast = weather.value * 0.95
+  const zenith = skyColor(0, daylight, golden, overcast)
+  const high = skyColor(1, daylight, golden, overcast)
+  const horizon = skyColor(2, daylight, golden, overcast)
+  sky.paint(`#${zenith.getHexString()}`, `#${high.getHexString()}`, `#${horizon.getHexString()}`)
+  horizonColor.copy(horizon)
+}
+
+const trees = ref<any[]>([])
+let clock = 0
 
 const { onBeforeRender } = useLoop()
 
 onBeforeRender(({ delta }) => {
+  clock += delta
+  updateEnvironment(delta)
+
   // Weather eases in and out; surfaces get wet while it rains and dry slowly afterwards
-  const target = water.raining ? 1 : 0
-  weather.value += (target - weather.value) * Math.min(1, delta * 0.8)
-  wet.value += (target - wet.value) * Math.min(1, delta * (water.raining ? 0.3 : 0.05))
+  const overcastTarget = liveOn.value
+    ? Math.min(1, (env.cloud / 100) * 0.8 + (water.raining ? 0.25 : 0))
+    : (water.raining ? 1 : 0)
+  weather.value += (overcastTarget - weather.value) * Math.min(1, delta * 0.8)
+  const rainTarget = water.raining ? 1 : 0
+  wet.value += (rainTarget - wet.value) * Math.min(1, delta * (water.raining ? 0.3 : 0.05))
+
+  paintSky(delta)
   const fog = scene.value?.fog as Fog | undefined
   if (fog) {
-    fog.color.copy(FOG_CLEAR).lerp(FOG_RAIN, weather.value)
+    fog.color.copy(horizonColor)
     fog.near = 40 - 25 * weather.value
     fog.far = 120 - 60 * weather.value
   }
+
+  // Wind: the rain slants and the trees sway (the wind direction is where it comes FROM)
+  const from = env.windDirection * DEG
+  const drift = Math.min(env.wind, 18) * 0.25
+  windVx = -Math.sin(from) * drift
+  windVz = Math.cos(from) * drift
+  const lean = Math.min(env.wind, 20) * 0.004
+  trees.value.forEach((tree, i) => {
+    const sway = 0.65 + 0.35 * Math.sin(clock * 1.4 + i * 2)
+    tree.rotation.z = Math.sin(from) * lean * sway
+    tree.rotation.x = Math.cos(from) * lean * sway
+  })
 
   // Garden tap: gravity fed from the barrel, waters the garden while it is open
   if (water.gardenTap) {
@@ -277,33 +409,95 @@ onBeforeRender(({ delta }) => {
   water.flushT = Math.max(0, water.flushT - delta)
   cistern.value = Math.min(1, cistern.value + 0.3 * delta)
 
-  // The garden dries out slowly, and rain waters it a little
-  water.garden = Math.max(0, water.garden - 0.004 * delta)
-  if (water.raining) { water.garden = Math.min(1, water.garden + 0.02 * delta) }
+  // The garden dries out (faster in strong sun when real data is used), and rain waters it
+  const drying = liveOn.value ? 0.003 + 0.012 * Math.min(1, env.radiation / 800) : 0.004
+  water.garden = Math.max(0, water.garden - drying * delta)
+  if (water.raining) {
+    const watering = liveOn.value ? 0.012 * Math.min(env.precipitation, 5) : 0.02
+    water.garden = Math.min(1, water.garden + watering * delta)
+  }
 
   if (!water.raining) { return }
 
+  // Light rain shows fewer drops than a downpour
+  const active = liveOn.value ? Math.round(DROP_COUNT * Math.min(1, Math.max(0.1, env.precipitation / 3))) : DROP_COUNT
   dropData.forEach((drop, i) => {
-    updateDrop(drop, delta)
     const mesh = drops.value[i]
     if (!mesh) { return }
+    if (i >= active) {
+      mesh.visible = false
+      return
+    }
+    mesh.visible = true
+    updateDrop(drop, delta)
     mesh.position.set(drop.x, drop.y, drop.z)
-    // Falling rain is a long thin streak; on the roof and in the gutter it is a small bead;
+    // Falling rain is a long thin streak leaning with the wind; on the roof and in the gutter it is a small bead;
     // the overflow is drawn wider so it reads as a film running down the barrel
-    if (drop.state === 'overflow') { mesh.scale.set(5, 0.45, 5) }
-    else if (drop.state === 'sliding' || drop.state === 'gutter') { mesh.scale.set(1.8, 0.18, 1.8) }
-    else if (drop.state === 'pipe') { mesh.scale.set(1.2, 0.5, 1.2) }
-    else { mesh.scale.set(1, 1, 1) }
+    if (drop.state === 'overflow') { mesh.scale.set(5, 0.45, 5); mesh.rotation.set(0, 0, 0) }
+    else if (drop.state === 'sliding' || drop.state === 'gutter') { mesh.scale.set(1.8, 0.18, 1.8); mesh.rotation.set(0, 0, 0) }
+    else if (drop.state === 'pipe') { mesh.scale.set(1.2, 0.5, 1.2); mesh.rotation.set(0, 0, 0) }
+    else {
+      mesh.scale.set(1, 1, 1)
+      mesh.rotation.set(-windVz / drop.speed, 0, windVx / drop.speed)
+    }
   })
 })
 
 const pumpOn = computed(() => water.sinkTap || water.flushT > 0)
 
-// Light and sky follow the weather
-const sunIntensity = computed(() => 2.8 - 1.9 * weather.value)
-const skyLightIntensity = computed(() => 0.8 - 0.1 * weather.value)
-const clearSkyOpacity = computed(() => 1 - weather.value)
-const sunDiscPosition = sunPosition.map(v => v * 9.5) as [number, number, number]
+// Light and sky follow the sun (SunCalc) and the weather
+const sunDirection = computed<[number, number, number]>(() => {
+  const altitude = env.sunAltitude * DEG
+  const azimuth = env.sunAzimuth * DEG
+  // the scene's north is -z and east is +x, so the sun at noon (south) lights the front of the house
+  return [Math.cos(altitude) * Math.sin(azimuth), Math.sin(altitude), -Math.cos(altitude) * Math.cos(azimuth)]
+})
+const moonDirection = computed<[number, number, number]>(() => {
+  const altitude = env.moonAltitude * DEG
+  const azimuth = env.moonAzimuth * DEG
+  return [Math.cos(altitude) * Math.sin(azimuth), Math.sin(altitude), -Math.cos(altitude) * Math.cos(azimuth)]
+})
+const scaled = (direction: [number, number, number], length: number) => direction.map(v => v * length) as [number, number, number]
+const sunPosition = computed(() => scaled(sunDirection.value, 40))
+const sunDiscPosition = computed(() => scaled(sunDirection.value, 380))
+const moonPosition = computed(() => scaled(moonDirection.value, 370))
+
+const daylight = computed(() => smooth(-8, 10, env.sunAltitude))
+const sunIntensity = computed(() => 2.8 * smooth(0, 10, env.sunAltitude) * (1 - 0.68 * weather.value))
+const skyLightIntensity = computed(() => (0.2 + 0.6 * daylight.value) * (1 - 0.12 * weather.value))
+const moonIntensity = computed(() => 0.45 * env.moonLit * smooth(0, 10, env.moonAltitude) * (1 - daylight.value) * (1 - 0.6 * weather.value))
+const sunColor = computed(() => `#${new Color('#ff9a55').lerp(new Color('#fff1d6'), smooth(0, 25, env.sunAltitude)).getHexString()}`)
+const hemiSkyColor = computed(() => `#${new Color('#2a3b78').lerp(new Color('#cfe6ff'), daylight.value).getHexString()}`)
+const hemiGroundColor = computed(() => `#${new Color('#141c12').lerp(new Color('#5c7a46'), daylight.value).getHexString()}`)
+const sunDiscOpacity = computed(() => (1 - weather.value * 0.9) * smooth(-2, 1, env.sunAltitude))
+const moonOpacity = computed(() => smooth(-2, 3, env.moonAltitude) * (1 - daylight.value * 0.95) * (1 - weather.value * 0.85))
+const moonColor = computed(() => `#${new Color('#4a5060').lerp(new Color('#eef1f8'), 0.35 + 0.65 * env.moonLit).getHexString()}`)
+const starOpacity = computed(() => (1 - daylight.value) * (1 - weather.value) * 0.9)
+// windows light up when it gets dark
+const nightGlow = computed(() => (1 - daylight.value) * 0.9)
+const cloudScale = computed<[number, number, number]>(() => {
+  const s = liveOn.value ? 0.9 + 0.8 * weather.value : 1.3
+  return [s, s, s]
+})
+
+// Stars: tiny shapes scattered on a big sphere above the horizon
+const starMesh = ref<any>(null)
+watch(starMesh, (mesh) => {
+  if (!mesh) { return }
+  const dummy = new Object3D()
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const theta = Math.random() * Math.PI * 2
+    const y = 0.02 + Math.random() * 0.98
+    const radius = Math.sqrt(1 - y * y)
+    dummy.position.set(Math.cos(theta) * radius * 450, y * 450, Math.sin(theta) * radius * 450)
+    const size = 0.5 + Math.random() * 1.1
+    dummy.scale.set(size, size, size)
+    dummy.updateMatrix()
+    mesh.setMatrixAt(i, dummy.matrix)
+  }
+  mesh.instanceMatrix.needsUpdate = true
+  mesh.frustumCulled = false
+}, { immediate: true })
 
 const hex = (value: number) => Math.round(Math.max(0, Math.min(255, value))).toString(16).padStart(2, '0')
 // Wet surfaces get darker (multiplied with their texture) and shinier
@@ -387,6 +581,11 @@ watch(tuftMesh, (mesh) => {
   mesh.frustumCulled = false
 }, { immediate: true })
 
+const treeSpots = [
+  { x: -7, z: 1.5, s: 1 },
+  { x: 3.2, z: -3.5, s: 1.2 },
+]
+
 const ROCKS = [
   { p: [0.9, 0.1, 4.6], s: [0.3, 0.2, 0.25] },
   { p: [1.3, 0.08, 4.85], s: [0.18, 0.14, 0.16] },
@@ -398,38 +597,36 @@ const ROCKS = [
 </script>
 
 <template>
-  <!-- sky and light -->
-  <!-- clear sky, the overcast sky fades in over it while it rains -->
+  <!-- sky dome: its colours follow the sun and the weather -->
   <TresMesh :render-order="-3">
     <TresSphereGeometry :args="[500, 32, 16]" />
-    <TresMeshBasicMaterial :map="skyTex.clear" :side="1" :fog="false" :tone-mapped="false" :depth-write="false" />
+    <TresMeshBasicMaterial :map="sky.texture" :side="1" :fog="false" :tone-mapped="false" :depth-write="false" />
   </TresMesh>
-  <TresMesh :render-order="-2">
-    <TresSphereGeometry :args="[495, 32, 16]" />
-    <TresMeshBasicMaterial
-      :map="skyTex.overcast"
-      :side="1"
-      :fog="false"
-      :tone-mapped="false"
-      :depth-write="false"
-      transparent
-      :opacity="weather"
-    />
-  </TresMesh>
+  <TresInstancedMesh ref="starMesh" :args="[undefined, undefined, STAR_COUNT]" :render-order="-2">
+    <TresOctahedronGeometry :args="[1.1, 0]" />
+    <TresMeshBasicMaterial color="#ffffff" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="starOpacity" />
+  </TresInstancedMesh>
   <TresMesh :position="sunDiscPosition" :render-order="-1">
     <TresSphereGeometry :args="[14, 24, 16]" />
-    <TresMeshBasicMaterial color="#fff6dc" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="clearSkyOpacity" />
+    <TresMeshBasicMaterial color="#fff6dc" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="sunDiscOpacity" />
   </TresMesh>
   <TresMesh :position="sunDiscPosition" :render-order="-1">
     <TresSphereGeometry :args="[34, 24, 16]" />
-    <TresMeshBasicMaterial color="#fff1c8" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="clearSkyOpacity * 0.18" />
+    <TresMeshBasicMaterial color="#fff1c8" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="sunDiscOpacity * 0.18" />
   </TresMesh>
+  <TresMesh :position="moonPosition" :render-order="-1">
+    <TresSphereGeometry :args="[9, 24, 16]" />
+    <TresMeshBasicMaterial :color="moonColor" :fog="false" :tone-mapped="false" :depth-write="false" transparent :opacity="moonOpacity" />
+  </TresMesh>
+
+  <!-- light: sky light, the sun (casts shadows) and a faint moon -->
   <TresHemisphereLight
-    :args="['#cfe6ff', '#5c7a46']"
+    :color="hemiSkyColor"
+    :ground-color="hemiGroundColor"
     :intensity="skyLightIntensity"
   />
   <TresDirectionalLight
-    color="#fff1d6"
+    :color="sunColor"
     :position="sunPosition"
     :intensity="sunIntensity"
     cast-shadow
@@ -443,6 +640,7 @@ const ROCKS = [
     :shadow-mapSize-width="2048"
     :shadow-mapSize-height="2048"
   />
+  <TresDirectionalLight color="#9db4ff" :position="moonPosition" :intensity="moonIntensity" />
 
   <!-- ground -->
   <TresMesh :rotation="[-Math.PI / 2, 0, 0]" :position="[0, -0.01, 0]" receive-shadow>
@@ -510,6 +708,23 @@ const ROCKS = [
       />
     </TresMesh>
 
+    <!-- solar panels on the south face of the roof: their output follows the real solar radiation -->
+    <TresGroup
+      v-for="(panel, i) in solarPanels"
+      :key="i"
+      :position="panel.p"
+      :rotation="[ROOF_SLOPE, 0, 0]"
+    >
+      <TresMesh cast-shadow>
+        <TresBoxGeometry :args="[0.77, 0.03, 0.72]" />
+        <TresMeshStandardMaterial color="#c4cad2" :metalness="0.6" :roughness="0.4" />
+      </TresMesh>
+      <TresMesh :position="[0, 0.02, 0]">
+        <TresBoxGeometry :args="[0.71, 0.015, 0.66]" />
+        <TresMeshPhysicalMaterial :map="solarTex" :roughness="0.15" :metalness="0.5" :clearcoat="1" />
+      </TresMesh>
+    </TresGroup>
+
     <!-- chimney -->
     <TresMesh :position="[-1, 3.4, -0.8]" cast-shadow>
       <TresBoxGeometry :args="[0.5, 1.4, 0.5]" />
@@ -566,7 +781,7 @@ const ROCKS = [
       </TresMesh>
       <TresMesh :position="[0, 0, 0.02]">
         <TresBoxGeometry :args="[0.66, 0.66, 0.04]" />
-        <TresMeshPhysicalMaterial color="#9cc7e0" :metalness="0.1" :roughness="0.05" :clearcoat="1" />
+        <TresMeshPhysicalMaterial color="#9cc7e0" :metalness="0.1" :roughness="0.05" :clearcoat="1" emissive="#ffc860" :emissive-intensity="nightGlow" />
       </TresMesh>
       <TresMesh :position="[0, 0, 0.045]">
         <TresBoxGeometry :args="[0.04, 0.66, 0.02]" />
@@ -845,12 +1060,9 @@ const ROCKS = [
 
   <!-- trees -->
   <TresGroup
-    v-for="(t, i) in [{ x: -7,
-                        z: 1.5,
-                        s: 1 }, { x: 3.2,
-                                  z: -3.5,
-                                  s: 1.2 }]"
+    v-for="(t, i) in treeSpots"
     :key="i"
+    ref="trees"
     :position="[t.x, 0, t.z]"
     :scale="[t.s, t.s, t.s]"
   >
@@ -916,7 +1128,8 @@ const ROCKS = [
   <!-- cloud: many puffs grouped together, click it to toggle the rain -->
   <TresGroup
     :position="[-3, 7.8, 0]"
-    :scale="[1.3, 1.3, 1.3]"
+    :scale="cloudScale"
+    :visible="!liveOn || env.cloud > 8 || water.raining"
     @click="toggleRain"
     @pointerenter="setCursor('pointer')"
     @pointerleave="setCursor('auto')"

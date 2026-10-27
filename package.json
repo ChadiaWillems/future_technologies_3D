@@ -12,12 +12,13 @@
     "lint:fix": "eslint  --fix"
   },
   "dependencies": {
+    "@tresjs/cientos": "latest",
     "@tresjs/core": "latest",
+    "@tresjs/post-processing": "latest",
+    "suncalc": "^2.1.1",
     "three": "latest",
     "three-stdlib": "latest",
-    "vue": "latest",
-    "@tresjs/cientos": "latest",
-    "@tresjs/post-processing": "latest"
+    "vue": "latest"
   },
   "devDependencies": {
     "@tresjs/eslint-config": "^1.1.0",

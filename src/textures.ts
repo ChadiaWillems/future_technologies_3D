@@ -217,28 +217,48 @@ export function createTextures() {
   return { grass, plaster, roof, wood, barrel, stone, bark, leaves, soil, brick }
 }
 
-// Sky dome gradients (zenith at the top, horizon in the middle). A plain textured sphere works the same
-// in the WebGL and WebGPU renderers, unlike a GLSL sky shader. The horizon colour matches the fog.
-function skyGradient(zenith: string, high: string, horizon: string) {
+// Sky dome: a vertical gradient (zenith at the top, horizon in the middle) painted on a tiny canvas.
+// A plain textured sphere works the same in the WebGL and WebGPU renderers, unlike a GLSL sky shader.
+// Call paint() again whenever the colours change (time of day, weather).
+export function createSky() {
   const canvas = document.createElement('canvas')
   canvas.width = 4
   canvas.height = 256
   const c = canvas.getContext('2d')!
-  const gradient = c.createLinearGradient(0, 0, 0, 256)
-  gradient.addColorStop(0, zenith)
-  gradient.addColorStop(0.3, high)
-  gradient.addColorStop(0.5, horizon)
-  gradient.addColorStop(1, horizon)
-  c.fillStyle = gradient
-  c.fillRect(0, 0, 4, 256)
   const texture = new CanvasTexture(canvas)
   texture.colorSpace = SRGBColorSpace
-  return texture
+  function paint(zenith: string, high: string, horizon: string) {
+    const gradient = c.createLinearGradient(0, 0, 0, 256)
+    gradient.addColorStop(0, zenith)
+    gradient.addColorStop(0.3, high)
+    gradient.addColorStop(0.5, horizon)
+    gradient.addColorStop(1, horizon)
+    c.fillStyle = gradient
+    c.fillRect(0, 0, 4, 256)
+    texture.needsUpdate = true
+  }
+  return { texture, paint }
 }
 
-export function createSkyTextures() {
-  return {
-    clear: skyGradient('#2f74c8', '#86b9ea', '#cfe0ea'),
-    overcast: skyGradient('#59636e', '#7d8791', '#8d98a3'),
-  }
+// Solar panel: dark blue cells with thin silver grid lines
+export function createSolarTexture() {
+  return make(256, [1, 1], 11, (c, s) => {
+    c.fillStyle = '#122a52'
+    c.fillRect(0, 0, s, s)
+    const cols = 6
+    const rows = 6
+    for (let x = 0; x < cols; x++) {
+      for (let y = 0; y < rows; y++) {
+        const g = c.createLinearGradient(0, y * (s / rows), 0, (y + 1) * (s / rows))
+        g.addColorStop(0, '#1d4378')
+        g.addColorStop(1, '#14305c')
+        c.fillStyle = g
+        c.fillRect(x * (s / cols) + 3, y * (s / rows) + 3, s / cols - 6, s / rows - 6)
+      }
+    }
+    c.strokeStyle = 'rgba(210,220,235,0.55)'
+    c.lineWidth = 1
+    for (let i = 0; i <= cols; i++) { c.beginPath(); c.moveTo(i * (s / cols), 0); c.lineTo(i * (s / cols), s); c.stroke() }
+    for (let i = 0; i <= rows; i++) { c.beginPath(); c.moveTo(0, i * (s / rows)); c.lineTo(s, i * (s / rows)); c.stroke() }
+  })
 }
