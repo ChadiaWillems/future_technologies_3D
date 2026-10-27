@@ -239,26 +239,3 @@ export function createSky() {
   }
   return { texture, paint }
 }
-
-// Solar panel: dark blue cells with thin silver grid lines
-export function createSolarTexture() {
-  return make(256, [1, 1], 11, (c, s) => {
-    c.fillStyle = '#122a52'
-    c.fillRect(0, 0, s, s)
-    const cols = 6
-    const rows = 6
-    for (let x = 0; x < cols; x++) {
-      for (let y = 0; y < rows; y++) {
-        const g = c.createLinearGradient(0, y * (s / rows), 0, (y + 1) * (s / rows))
-        g.addColorStop(0, '#1d4378')
-        g.addColorStop(1, '#14305c')
-        c.fillStyle = g
-        c.fillRect(x * (s / cols) + 3, y * (s / rows) + 3, s / cols - 6, s / rows - 6)
-      }
-    }
-    c.strokeStyle = 'rgba(210,220,235,0.55)'
-    c.lineWidth = 1
-    for (let i = 0; i <= cols; i++) { c.beginPath(); c.moveTo(i * (s / cols), 0); c.lineTo(i * (s / cols), s); c.stroke() }
-    for (let i = 0; i <= rows; i++) { c.beginPath(); c.moveTo(0, i * (s / rows)); c.lineTo(s, i * (s / rows)); c.stroke() }
-  })
-}

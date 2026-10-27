@@ -3,13 +3,13 @@ import { useLoop, useTres } from '@tresjs/core/webgpu'
 import { Color, Fog, Object3D } from 'three'
 import { computed, ref, watch } from 'vue'
 import { weatherData } from '../liveController'
-import { formatLocal, radiationSinceMidnight, sampleWeather, skyAt } from '../liveData'
-import { createSky, createSolarTexture, createTextures } from '../textures'
-import { BARREL_LITERS, env, live, water } from '../waterState'
+import { formatLocal, sampleWeather, skyAt } from '../liveData'
+import { ROOF_AREA_M2, RUNOFF, stepBarrel } from '../rainModel'
+import { createSky, createTextures } from '../textures'
+import { env, live, recordLevel, water } from '../waterState'
 
 const tex = createTextures()
 const sky = createSky()
-const solarTex = createSolarTexture()
 
 // The house is built at its original size in a group, then scaled up by H
 const H = 1.25
@@ -34,60 +34,65 @@ const DRAIN_X = CENTER_X + GUTTER_HALF
 const DRAIN_Z = GUTTER_HALF
 
 // Rain barrel stands next to the house under the downspout (not scaled with the house)
-const BARREL_SCALE = 1.5
 const BARREL_X = DRAIN_X + 0.2
 const BARREL_Z = DRAIN_Z + 0.1
-const BARREL_RADIUS = 0.5 * BARREL_SCALE
-const BARREL_RIM = BARREL_SCALE
 const WATER_BASE = 0.04
 const WATER_HEIGHT = 0.96
-const FILL_PER_DROP = 0.004
 const PUDDLE_PER_DROP = 0.002
 const PIPE_SPEED = 5
 const OVERFLOW_SPEED = 0.8
 const OVERFLOW_FALL = 2
 
 // Using the water (fractions of a full barrel)
-const GARDEN_TAP_RATE = 0.05 // per second
-const GARDEN_GAIN = 3 // garden health per fill taken
-const SINK_RATE = 0.02 // per second
-const FLUSH_COST = 0.03
+const GARDEN_TAP_LPS = 15 // litres per second
+const GARDEN_GAIN = 0.01 // garden health per litre
+const SINK_LPS = 6
+const FLUSH_LITERS = 9
+const DRAIN_LPS = 40 // the drain valve empties the barrel onto the ground
+const MANUAL_RAIN_MM = 4 // rain intensity in manual mode
+const MANUAL_SECONDS_PER_HOUR = 6 // manual rain also plays as a time-lapse
 
 // Garden tap sits on the barrel, pointing at the garden bed
-const TAP_X = BARREL_X + 0.85
+const DRAIN_DROPS = 24
 const TAP_Y = 0.3
 const TAP_DROPS = 30
 const TAP_FALL_TIME = 0.24
 
-// Rain that lands on the roof ends up in the barrel (1 mm on 1 m² is 1 litre)
-const ROOF_AREA = (2 * ROOF_HALF) ** 2
-const RUNOFF = 0.8
 const RAIN_THRESHOLD = 0.05 // mm per hour that counts as "raining"
-
-// Solar panels on the south roof face: 5 panels of 0.75 x 0.7 (before scaling by H)
-const PANEL_AREA = 5 * 0.75 * 0.7 * H * H
-const PANEL_EFFICIENCY = 0.2
-const ROOF_SLOPE = Math.atan(2 / (3 / Math.SQRT2))
-const solarPanels = [
-  { x: -0.8, z: 1.82 },
-  { x: 0, z: 1.82 },
-  { x: 0.8, z: 1.82 },
-  { x: -0.4, z: 1.22 },
-  { x: 0.4, z: 1.22 },
-].map(({ x, z }) => {
-  const surface = 2 + 2 * (1 - z / (3 / Math.SQRT2))
-  // lift the panel 2 cm above the roof, along the roof's normal
-  return { p: [x, surface + 0.02 * Math.cos(ROOF_SLOPE), z + 0.02 * Math.sin(ROOF_SLOPE)] as [number, number, number] }
-})
 
 const STAR_COUNT = 400
 
 // True while real weather data is loaded and driving the scene
 const liveOn = computed(() => live.enabled && live.status === 'ready' && weatherData.value !== null)
 
-// Wind pushes the falling rain sideways (units per second)
-let windVx = 0
-let windVz = 0
+// The barrel gets bigger or smaller with the chosen volume (a 300 L barrel is drawn at scale 1.5)
+const barrelScale = computed(() => 1.5 * Math.cbrt(water.capacity / 300))
+const barrelRadius = computed(() => 0.5 * barrelScale.value)
+const barrelRim = computed(() => barrelScale.value)
+// the barrel wall at height y is 0.45 * scale + 0.05 * y wide (it is a bit wider at the top)
+const wallAt = (y: number) => 0.45 * barrelScale.value + 0.05 * y
+const tapBodyX = computed(() => BARREL_X + wallAt(TAP_Y) + 0.08)
+const tapEnd = computed(() => tapBodyX.value + 0.1)
+// the garden tap stream always lands on the edge of the garden bed, however big the barrel is
+const tapSpeed = computed(() => (1.65 - tapEnd.value) / TAP_FALL_TIME)
+const valveEnd = computed(() => BARREL_Z + wallAt(0.22) + 0.2)
+const downspout = computed(() => {
+  const top = 2.34
+  const bottom = barrelRim.value + 0.05
+  return { y: (top + bottom) / 2, length: top - bottom }
+})
+const pipeToHouse = computed(() => {
+  const start = -1.35
+  const end = BARREL_X - wallAt(0.25) + 0.05
+  return { x: (start + end) / 2, length: end - start }
+})
+const levelLampColor = computed(() => {
+  if (water.fill >= 0.999 && water.raining) { return '#3b8fd9' }
+  if (water.fill > 0.4) { return '#2ecc71' }
+  if (water.fill > 0.15) { return '#f39c12' }
+  return '#e74c3c'
+})
+
 const puddle = ref(0)
 const cistern = ref(1) // water level in the toilet cistern, 0..1
 const weather = ref(0) // 0 = sunny, 1 = rainy (eases toward the current weather)
@@ -108,6 +113,9 @@ const dropData = Array.from({ length: DROP_COUNT }, () => ({
   radius: 0,
 }))
 const drops = ref<any[]>([])
+
+const drainDropData = Array.from({ length: DRAIN_DROPS }, () => ({ t: Math.random() * TAP_FALL_TIME }))
+const drainDrops = ref<any[]>([])
 
 const tapDropData = Array.from({ length: TAP_DROPS }, () => ({ t: Math.random() * TAP_FALL_TIME }))
 const tapDrops = ref<any[]>([])
@@ -144,6 +152,7 @@ const toggleRain = onceOnClick(() => {
   if (live.enabled) { return } // in real-data mode the weather comes from Open-Meteo
   water.raining = !water.raining
 })
+const toggleDrain = onceOnClick(() => { water.draining = water.draining ? false : water.fill > 0 })
 const toggleGardenTap = onceOnClick(() => { water.gardenTap = water.gardenTap ? false : water.fill > 0 })
 const toggleSinkTap = onceOnClick(() => {
   if (!water.cutaway) { return }
@@ -151,7 +160,7 @@ const toggleSinkTap = onceOnClick(() => {
 })
 const flush = onceOnClick(() => {
   if (!water.cutaway || water.fill <= 0) { return }
-  drain(FLUSH_COST)
+  drain(FLUSH_LITERS)
   water.flushT = 1.5
   cistern.value = 0.1
 })
@@ -160,19 +169,24 @@ function setCursor(cursor: string) {
   document.body.style.cursor = cursor
 }
 
-// Take water out of the barrel; returns how much was actually available
-function drain(amount: number) {
-  const taken = Math.min(water.fill, amount)
-  water.fill -= taken
-  water.used += taken * BARREL_LITERS
+// Take litres out of the barrel; returns how much was actually available
+function remove(liters: number) {
+  const available = water.fill * water.capacity
+  const taken = Math.min(available, liters)
+  water.fill = (available - taken) / water.capacity
+  return taken
+}
+
+// Water used by taps and the toilet is counted; water let out through the drain valve is not
+function drain(liters: number) {
+  const taken = remove(liters)
+  water.used += taken
   return taken
 }
 
 function updateDrop(drop: typeof dropData[number], delta: number) {
   if (drop.state === 'falling') {
     drop.y -= drop.speed * delta
-    drop.x += windVx * delta
-    drop.z += windVz * delta
     const surface = surfaceHeight(drop.x, drop.z)
     if (drop.y >= surface) { return }
     if (surface === 0) {
@@ -229,31 +243,30 @@ function updateDrop(drop: typeof dropData[number], delta: number) {
   else if (drop.state === 'pipe') {
     // Down the downspout into the barrel
     drop.y -= PIPE_SPEED * delta
-    if (drop.y <= BARREL_SCALE * (WATER_BASE + WATER_HEIGHT * water.fill)) {
+    if (drop.y <= barrelScale.value * (WATER_BASE + WATER_HEIGHT * water.fill)) {
       if (water.fill < 1) {
-        // with real data the barrel is filled from the measured rainfall instead (see updateEnvironment)
-        if (!liveOn.value) { water.fill = Math.min(1, water.fill + FILL_PER_DROP) }
+        // the barrel is filled by the rain model (see updateEnvironment); the drops are what you see of it
         respawn(drop)
       }
       else {
         // Barrel is full: the water spills over a random spot of the rim
         drop.state = 'overflow'
         drop.angle = Math.random() * Math.PI * 2
-        drop.radius = BARREL_RADIUS - 0.15
-        drop.y = BARREL_RIM + 0.02
+        drop.radius = barrelRadius.value - 0.15
+        drop.y = barrelRim.value + 0.02
       }
     }
   }
   else if (drop.state === 'overflow') {
     // Slide across the water surface, curl over the lip, then run down the outside wall
-    const wallRadius = BARREL_SCALE * 0.45 + 0.05 * drop.y + 0.03
-    if (drop.radius < wallRadius || drop.y > BARREL_RIM) {
+    const wallRadius = barrelScale.value * 0.45 + 0.05 * drop.y + 0.03
+    if (drop.radius < wallRadius || drop.y > barrelRim.value) {
       drop.radius = Math.min(drop.radius + OVERFLOW_SPEED * delta, wallRadius)
-      if (drop.radius >= BARREL_RADIUS) { drop.y -= OVERFLOW_SPEED * delta }
+      if (drop.radius >= barrelRadius.value) { drop.y -= OVERFLOW_SPEED * delta }
     }
     else {
       drop.y -= OVERFLOW_FALL * delta
-      drop.radius = BARREL_SCALE * 0.45 + 0.05 * drop.y + 0.03
+      drop.radius = barrelScale.value * 0.45 + 0.05 * drop.y + 0.03
     }
     drop.x = BARREL_X + Math.cos(drop.angle) * drop.radius
     drop.z = BARREL_Z + Math.sin(drop.angle) * drop.radius
@@ -273,8 +286,10 @@ const smooth = (edge0: number, edge1: number, x: number) => {
 // Fill `env` with what the scene should react to: real data when it is loaded, the old manual behaviour otherwise
 function updateEnvironment(delta: number) {
   const data = weatherData.value
+  let rain: number
+  let hours: number
   if (liveOn.value && data) {
-    const hours = live.playing ? delta / live.secondsPerHour : 0
+    hours = live.playing ? delta / live.secondsPerHour : 0
     if (live.playing) {
       live.time += hours * 3_600_000
       if (live.time > live.end) { live.time = live.start }
@@ -286,34 +301,29 @@ function updateEnvironment(delta: number) {
     env.moonAltitude = astro.moonAltitude
     env.moonAzimuth = astro.moonAzimuth
     env.moonLit = astro.moonLit
-    env.temperature = w.temperature
-    env.precipitation = w.precipitation
     env.cloud = w.cloud
-    env.wind = w.wind
-    env.windDirection = w.windDirection
-    env.radiation = w.radiation
-    env.solarWatts = w.radiation * PANEL_AREA * PANEL_EFFICIENCY
-    env.solarKWh = (radiationSinceMidnight(data, live.time) * PANEL_AREA * PANEL_EFFICIENCY) / 1000
     env.timeLabel = formatLocal(data, live.time)
-
     water.raining = w.precipitation >= RAIN_THRESHOLD
-    // the measured rain on the roof runs into the barrel (only while the time-lapse is playing)
-    water.fill = Math.min(1, water.fill + (w.precipitation * hours * ROOF_AREA * RUNOFF) / BARREL_LITERS)
+    rain = w.precipitation
   }
   else {
     env.sunAltitude = 35
     env.sunAzimuth = 146
     env.moonAltitude = -30
-    env.temperature = 14
-    env.precipitation = water.raining ? 3 : 0
     env.cloud = weather.value * 100
-    env.wind = 2.5
-    env.windDirection = 250
-    env.radiation = 850 * Math.sin(35 * DEG) * (1 - 0.85 * weather.value)
-    env.solarWatts = env.radiation * PANEL_AREA * PANEL_EFFICIENCY
-    env.solarKWh = 0
     env.timeLabel = ''
+    rain = water.raining ? MANUAL_RAIN_MM : 0
+    hours = delta / MANUAL_SECONDS_PER_HOUR
   }
+  env.precipitation = rain
+  env.inflow = rain * ROOF_AREA_M2 * RUNOFF
+
+  // The rain model: what runs off the roof flows into the barrel, the household uses some, the rest overflows
+  const step = stepBarrel({ liters: water.fill * water.capacity, capacity: water.capacity, rain, hours, useLitersPerHour: water.usage })
+  water.fill = step.liters / water.capacity
+  water.used += step.used
+  water.overflowed += step.overflow
+  if (liveOn.value) { recordLevel(live.time, step.liters) }
 }
 
 // Sky gradient colours (zenith, high, horizon) for night, day, golden hour and overcast
@@ -352,13 +362,9 @@ function paintSky(delta: number) {
   horizonColor.copy(horizon)
 }
 
-const trees = ref<any[]>([])
-let clock = 0
-
 const { onBeforeRender } = useLoop()
 
 onBeforeRender(({ delta }) => {
-  clock += delta
   updateEnvironment(delta)
 
   // Weather eases in and out; surfaces get wet while it rains and dry slowly afterwards
@@ -377,40 +383,39 @@ onBeforeRender(({ delta }) => {
     fog.far = 120 - 60 * weather.value
   }
 
-  // Wind: the rain slants and the trees sway (the wind direction is where it comes FROM)
-  const from = env.windDirection * DEG
-  const drift = Math.min(env.wind, 18) * 0.25
-  windVx = -Math.sin(from) * drift
-  windVz = Math.cos(from) * drift
-  const lean = Math.min(env.wind, 20) * 0.004
-  trees.value.forEach((tree, i) => {
-    const sway = 0.65 + 0.35 * Math.sin(clock * 1.4 + i * 2)
-    tree.rotation.z = Math.sin(from) * lean * sway
-    tree.rotation.x = Math.cos(from) * lean * sway
-  })
-
   // Garden tap: gravity fed from the barrel, waters the garden while it is open
   if (water.gardenTap) {
     if (water.fill <= 0) { water.gardenTap = false }
-    else { water.garden = Math.min(1, water.garden + drain(GARDEN_TAP_RATE * delta) * GARDEN_GAIN) }
+    else { water.garden = Math.min(1, water.garden + drain(GARDEN_TAP_LPS * delta) * GARDEN_GAIN) }
 
     tapDropData.forEach((drop, i) => {
       drop.t += delta
       if (drop.t > TAP_FALL_TIME) { drop.t -= TAP_FALL_TIME }
-      tapDrops.value[i]?.position.set(TAP_X + 3 * drop.t, TAP_Y - 5 * drop.t * drop.t, BARREL_Z)
+      tapDrops.value[i]?.position.set(tapEnd.value + tapSpeed.value * drop.t, TAP_Y - 5 * drop.t * drop.t, BARREL_Z)
     })
   }
 
   // Indoor tap and toilet: the pump pushes water from the barrel into the house
   if (water.sinkTap) {
     if (water.fill <= 0) { water.sinkTap = false }
-    else { drain(SINK_RATE * delta) }
+    else { drain(SINK_LPS * delta) }
   }
   water.flushT = Math.max(0, water.flushT - delta)
   cistern.value = Math.min(1, cistern.value + 0.3 * delta)
 
+  // Drain valve: lets the barrel run empty onto the ground
+  if (water.draining) {
+    if (water.fill <= 0) { water.draining = false }
+    else { remove(DRAIN_LPS * delta) }
+    drainDropData.forEach((drop, i) => {
+      drop.t += delta
+      if (drop.t > TAP_FALL_TIME) { drop.t -= TAP_FALL_TIME }
+      drainDrops.value[i]?.position.set(BARREL_X, Math.max(0.03, 0.22 - 5 * drop.t * drop.t), valveEnd.value + 2.2 * drop.t)
+    })
+  }
+
   // The garden dries out (faster in strong sun when real data is used), and rain waters it
-  const drying = liveOn.value ? 0.003 + 0.012 * Math.min(1, env.radiation / 800) : 0.004
+  const drying = 0.004
   water.garden = Math.max(0, water.garden - drying * delta)
   if (water.raining) {
     const watering = liveOn.value ? 0.012 * Math.min(env.precipitation, 5) : 0.02
@@ -433,12 +438,11 @@ onBeforeRender(({ delta }) => {
     mesh.position.set(drop.x, drop.y, drop.z)
     // Falling rain is a long thin streak leaning with the wind; on the roof and in the gutter it is a small bead;
     // the overflow is drawn wider so it reads as a film running down the barrel
-    if (drop.state === 'overflow') { mesh.scale.set(5, 0.45, 5); mesh.rotation.set(0, 0, 0) }
-    else if (drop.state === 'sliding' || drop.state === 'gutter') { mesh.scale.set(1.8, 0.18, 1.8); mesh.rotation.set(0, 0, 0) }
-    else if (drop.state === 'pipe') { mesh.scale.set(1.2, 0.5, 1.2); mesh.rotation.set(0, 0, 0) }
+    if (drop.state === 'overflow') { mesh.scale.set(5, 0.45, 5) }
+    else if (drop.state === 'sliding' || drop.state === 'gutter') { mesh.scale.set(1.8, 0.18, 1.8) }
+    else if (drop.state === 'pipe') { mesh.scale.set(1.2, 0.5, 1.2) }
     else {
       mesh.scale.set(1, 1, 1)
-      mesh.rotation.set(-windVz / drop.speed, 0, windVx / drop.speed)
     }
   })
 })
@@ -708,23 +712,6 @@ const ROCKS = [
       />
     </TresMesh>
 
-    <!-- solar panels on the south face of the roof: their output follows the real solar radiation -->
-    <TresGroup
-      v-for="(panel, i) in solarPanels"
-      :key="i"
-      :position="panel.p"
-      :rotation="[ROOF_SLOPE, 0, 0]"
-    >
-      <TresMesh cast-shadow>
-        <TresBoxGeometry :args="[0.77, 0.03, 0.72]" />
-        <TresMeshStandardMaterial color="#c4cad2" :metalness="0.6" :roughness="0.4" />
-      </TresMesh>
-      <TresMesh :position="[0, 0.02, 0]">
-        <TresBoxGeometry :args="[0.71, 0.015, 0.66]" />
-        <TresMeshPhysicalMaterial :map="solarTex" :roughness="0.15" :metalness="0.5" :clearcoat="1" />
-      </TresMesh>
-    </TresGroup>
-
     <!-- chimney -->
     <TresMesh :position="[-1, 3.4, -0.8]" cast-shadow>
       <TresBoxGeometry :args="[0.5, 1.4, 0.5]" />
@@ -901,8 +888,8 @@ const ROCKS = [
   </TresGroup>
 
   <!-- pipe from the barrel to the house, with the pump on it (outside, not scaled) -->
-  <TresMesh :position="[-1.025, 0.25, BARREL_Z]" :rotation="[0, 0, Math.PI / 2]">
-    <TresCylinderGeometry :args="[0.035, 0.035, 0.65, 12]" />
+  <TresMesh :position="[pipeToHouse.x, 0.25, BARREL_Z]" :rotation="[0, 0, Math.PI / 2]">
+    <TresCylinderGeometry :args="[0.035, 0.035, pipeToHouse.length, 12]" />
     <TresMeshStandardMaterial color="#6b8fb3" :roughness="0.5" />
   </TresMesh>
   <TresMesh :position="[-1.35, 0.25, 2.68]" :rotation="[Math.PI / 2, 0, 0]">
@@ -919,13 +906,13 @@ const ROCKS = [
   </TresMesh>
 
   <!-- downspout from the front right corner of the gutter down to the barrel -->
-  <TresMesh :position="[DRAIN_X, 1.945, DRAIN_Z]" cast-shadow>
-    <TresCylinderGeometry :args="[0.12, 0.12, 0.79, 32]" />
+  <TresMesh :position="[DRAIN_X, downspout.y, DRAIN_Z]" cast-shadow>
+    <TresCylinderGeometry :args="[0.12, 0.12, downspout.length, 32]" />
     <TresMeshStandardMaterial color="#b8bec6" :metalness="0.7" :roughness="0.4" />
   </TresMesh>
 
   <!-- rain barrel under the downspout: open top, water level rises as it fills -->
-  <TresGroup :position="[BARREL_X, 0, BARREL_Z]" :scale="[BARREL_SCALE, BARREL_SCALE, BARREL_SCALE]">
+  <TresGroup :position="[BARREL_X, 0, BARREL_Z]" :scale="[barrelScale, barrelScale, barrelScale]">
     <TresMesh :position="[0, 0.5, 0]" cast-shadow receive-shadow>
       <TresCylinderGeometry :args="[0.5, 0.45, 1, 32, 1, true]" />
       <TresMeshStandardMaterial :map="tex.barrel" :bump-map="tex.barrel" :bump-scale="1" :side="2" :roughness="0.75" />
@@ -953,7 +940,7 @@ const ROCKS = [
 
   <!-- garden tap on the barrel (not scaled): click to water the garden -->
   <TresGroup
-    :position="[BARREL_X + 0.77, TAP_Y, BARREL_Z]"
+    :position="[tapBodyX, TAP_Y, BARREL_Z]"
     :scale="[1.6, 1.6, 1.6]"
     @click="toggleGardenTap"
     @pointerenter="setCursor('pointer')"
@@ -980,6 +967,43 @@ const ROCKS = [
       <TresMeshPhysicalMaterial color="#6fb1f0" transparent :opacity="0.7" :roughness="0.05" />
     </TresMesh>
   </TresGroup>
+
+  <!-- drain valve at the bottom of the barrel: click it to let the barrel run empty -->
+  <TresGroup
+    :position="[BARREL_X, 0.22, valveEnd - 0.1]"
+    @click="toggleDrain"
+    @pointerenter="setCursor('pointer')"
+    @pointerleave="setCursor('auto')"
+  >
+    <TresMesh :rotation="[Math.PI / 2, 0, 0]">
+      <TresCylinderGeometry :args="[0.05, 0.05, 0.2, 12]" />
+      <TresMeshStandardMaterial color="#8a8f96" :metalness="0.85" :roughness="0.35" />
+    </TresMesh>
+    <TresMesh :position="[0, 0.09, -0.04]">
+      <TresBoxGeometry :args="[0.2, 0.04, 0.05]" />
+      <TresMeshStandardMaterial :color="water.draining ? '#2e8b57' : '#c0392b'" :roughness="0.4" />
+    </TresMesh>
+    <TresMesh>
+      <TresSphereGeometry :args="[0.22, 12, 8]" />
+      <TresMeshBasicMaterial transparent :opacity="0" :depth-write="false" />
+    </TresMesh>
+  </TresGroup>
+  <TresGroup :visible="water.draining">
+    <TresMesh v-for="i in DRAIN_DROPS" :key="i" ref="drainDrops">
+      <TresCylinderGeometry :args="[0.06, 0.05, 0.22, 8]" />
+      <TresMeshPhysicalMaterial color="#6fb1f0" transparent :opacity="0.7" :roughness="0.05" />
+    </TresMesh>
+  </TresGroup>
+
+  <!-- level lamp on a post: green = plenty, orange = getting low, red = (almost) empty, blue = overflowing -->
+  <TresMesh :position="[BARREL_X + 0.5, 0.55, BARREL_Z + 1.35]" cast-shadow>
+    <TresCylinderGeometry :args="[0.03, 0.04, 1.1, 10]" />
+    <TresMeshStandardMaterial color="#3d3d3f" :metalness="0.6" :roughness="0.5" />
+  </TresMesh>
+  <TresMesh :position="[BARREL_X + 0.5, 1.2, BARREL_Z + 1.35]">
+    <TresSphereGeometry :args="[0.11, 20, 14]" />
+    <TresMeshStandardMaterial :color="levelLampColor" :emissive="levelLampColor" :emissive-intensity="1.6" :roughness="0.3" />
+  </TresMesh>
 
   <!-- puddle: grows on the ground around the barrel while it overflows -->
   <TresMesh
@@ -1062,7 +1086,6 @@ const ROCKS = [
   <TresGroup
     v-for="(t, i) in treeSpots"
     :key="i"
-    ref="trees"
     :position="[t.x, 0, t.z]"
     :scale="[t.s, t.s, t.s]"
   >

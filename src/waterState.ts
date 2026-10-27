@@ -1,20 +1,32 @@
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 
+/** Default size of the rain barrel in litres */
 export const BARREL_LITERS = 300
 
-// Shared by the 3D scene (Landscape.vue) and the on-screen meter (App.vue)
+// Shared by the 3D scene (Landscape.vue) and the on-screen panels (App.vue)
 export const water = reactive({
   raining: false,
-  fill: 0, // barrel level, 0..1
-  used: 0, // liters taken out of the barrel so far
+  capacity: BARREL_LITERS, // barrel size in litres (slider)
+  fill: 0, // barrel level as a share of the capacity, 0..1
+  used: 0, // litres taken out of the barrel by taps, toilet and household use
+  overflowed: 0, // litres that did not fit and ran over the rim
+  usage: 0, // steady household use in litres per hour (slider)
   garden: 0.35, // garden health, 0..1
   cutaway: false, // see-through house
   gardenTap: false,
   sinkTap: false,
+  draining: false, // the drain valve is open: the barrel is being emptied onto the ground
   flushT: 0, // seconds left of the toilet flush (pump runs meanwhile)
 })
 
-// Real weather data (Open-Meteo) and the sun/moon (SunCalc) that drive the scene.
+// A bigger or smaller barrel holds the same water it held before; what no longer fits spills over
+watch(() => water.capacity, (capacity, previous) => {
+  const liters = water.fill * previous
+  water.overflowed += Math.max(0, liters - capacity)
+  water.fill = Math.min(1, liters / capacity)
+})
+
+// Real rainfall data (Open-Meteo) that drives the scene.
 // "Manual" mode keeps the original behaviour: you click the cloud to make it rain.
 export const live = reactive({
   enabled: false,
@@ -30,18 +42,43 @@ export const live = reactive({
 
 // What the scene reacts to right now (filled in every frame by Landscape.vue)
 export const env = reactive({
-  sunAltitude: 35, // degrees above the horizon
+  sunAltitude: 35, // degrees above the horizon (only lights the scene)
   sunAzimuth: 146, // degrees clockwise from north
   moonAltitude: -30,
   moonAzimuth: 0,
   moonLit: 0.5,
-  temperature: 14, // °C
   precipitation: 0, // mm per hour
   cloud: 0, // %
-  wind: 2.5, // m/s
-  windDirection: 250, // degrees the wind comes from
-  radiation: 0, // W/m²
-  solarWatts: 0,
-  solarKWh: 0, // since local midnight
+  inflow: 0, // litres per hour that the roof sends to the barrel
   timeLabel: '',
 })
+
+// Barrel level over the simulated time, for the chart. A point with `gap` starts a new line segment.
+export interface LevelPoint {
+  t: number
+  liters: number
+  gap?: boolean
+}
+export const history = reactive({ points: [] as LevelPoint[] })
+
+const POINT_EVERY = 10 * 60_000
+export function recordLevel(t: number, liters: number) {
+  const points = history.points
+  const last = points[points.length - 1]
+  if (!last) {
+    points.push({ t, liters })
+    return
+  }
+  // time went backwards (scrubbed back, or the data looped): forget the part that is replaced
+  if (t < last.t) {
+    while (points.length && points[points.length - 1].t >= t) { points.pop() }
+    points.push({ t, liters, gap: true })
+    return
+  }
+  if (t - last.t < POINT_EVERY) { return }
+  // jumped far ahead: do not draw a line across the part that was skipped
+  points.push({ t, liters, gap: t - last.t > 3 * 3_600_000 })
+}
+export function clearHistory() {
+  history.points.length = 0
+}

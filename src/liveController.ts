@@ -1,7 +1,7 @@
 import { shallowRef } from 'vue'
 import { fetchWeather, PLACES } from './liveData'
 import type { WeatherData } from './liveData'
-import { live, water } from './waterState'
+import { clearHistory, live, water } from './waterState'
 
 export const weatherData = shallowRef<WeatherData | null>(null)
 
@@ -21,6 +21,7 @@ export async function enableLive(placeIndex = live.placeIndex) {
     live.start = data.times[0]
     live.end = data.times[data.times.length - 1]
     live.time = clampTime(Date.now())
+    clearHistory()
     live.status = 'ready'
   }
   catch (error) {

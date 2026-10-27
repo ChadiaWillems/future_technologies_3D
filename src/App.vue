@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { TresCanvas } from '@tresjs/core/webgpu'
 import { OrbitControls } from '@tresjs/cientos/webgpu'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { BUTTONS, runCommand, speech, startListening, stopListening } from './commands'
 import Landscape from './components/Landscape.vue'
+import RainChart from './components/RainChart.vue'
 import { disableLive, enableLive, jumpToNow } from './liveController'
 import { PLACES } from './liveData'
-import { BARREL_LITERS, env, live, water } from './waterState'
+import { env, live, water } from './waterState'
 
 const percent = computed(() => Math.round(water.fill * 100))
-const liters = computed(() => Math.round(water.fill * BARREL_LITERS))
+const liters = computed(() => Math.round(water.fill * water.capacity))
 const used = computed(() => Math.round(water.used))
+const overflowed = computed(() => Math.round(water.overflowed))
+const inflow = computed(() => Math.round(env.inflow))
 const gardenPercent = computed(() => Math.round(water.garden * 100))
 
 const liveReady = computed(() => live.enabled && live.status === 'ready')
@@ -19,6 +23,13 @@ onMounted(() => { enableLive() })
 
 function changePlace(event: Event) {
   enableLive(Number((event.target as HTMLSelectElement).value))
+}
+
+const typed = ref('')
+function runTyped() {
+  if (!typed.value.trim()) { return }
+  runCommand(typed.value, 'tekst')
+  typed.value = ''
 }
 </script>
 
@@ -37,16 +48,16 @@ function changePlace(event: Event) {
     <Landscape />
   </TresCanvas>
 
-  <!-- real data: Open-Meteo weather and the SunCalc sun -->
+  <!-- real rainfall: Open-Meteo -->
   <div class="hud hud-right">
     <div class="panel">
-      <h3>Real rainfall</h3>
+      <h3>Echte neerslag</h3>
       <div class="buttons">
         <button :class="{ active: !live.enabled }" @click="disableLive()">
-          Manual
+          Handmatig
         </button>
         <button :class="{ active: live.enabled }" @click="enableLive()">
-          Real data
+          Echte data
         </button>
       </div>
 
@@ -57,7 +68,7 @@ function changePlace(event: Event) {
           </option>
         </select>
         <p v-if="live.status === 'loading'" class="hint">
-          Loading weather data…
+          Weerdata laden…
         </p>
       </template>
       <p v-if="live.status === 'error'" class="hint error">
@@ -78,72 +89,142 @@ function changePlace(event: Event) {
         />
         <div class="buttons">
           <button @click="live.playing = !live.playing">
-            {{ live.playing ? 'Pause' : 'Play' }}
+            {{ live.playing ? 'Pauze' : 'Speel af' }}
           </button>
           <button @click="jumpToNow()">
-            Now
+            Nu
           </button>
           <select v-model.number="live.secondsPerHour">
             <option :value="2">
-              1 h = 2 s
+              1 u = 2 s
             </option>
             <option :value="6">
-              1 h = 6 s
+              1 u = 6 s
             </option>
             <option :value="15">
-              1 h = 15 s
+              1 u = 15 s
             </option>
             <option :value="3600">
-              Real time
+              Echte tijd
             </option>
           </select>
         </div>
 
         <div class="row">
-          <span>Rain</span><span>{{ env.precipitation.toFixed(1) }} mm/h</span>
+          <span>Regen</span><span>{{ env.precipitation.toFixed(1) }} mm/u</span>
         </div>
       </template>
 
       <p class="hint">
-        Weather: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
-        Sun and moon: SunCalc.
+        Weerdata: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0).
+        Zonnestand: SunCalc.
       </p>
     </div>
   </div>
 
-  <!-- water meter -->
-  <div class="hud">
+  <div class="hud hud-left">
+    <!-- the rain barrel: live values, chart and settings -->
     <div class="panel">
-      <h3>Rain barrel</h3>
+      <h3>Regenton</h3>
       <div class="bar">
         <div class="bar-fill water" :style="{ width: `${percent}%` }"></div>
       </div>
       <div class="row">
-        <span>{{ liters }} / {{ BARREL_LITERS }} L</span>
+        <span>{{ liters }} / {{ water.capacity }} L</span>
         <span>{{ percent }}%</span>
       </div>
       <div class="row">
-        <span>Water used</span>
-        <span>{{ used }} L</span>
+        <span>Dak levert</span><span>{{ inflow }} L/u</span>
       </div>
       <div class="row">
-        <span>Garden health</span>
-        <span>{{ gardenPercent }}%</span>
+        <span>Verbruikt</span><span>{{ used }} L</span>
+      </div>
+      <div class="row">
+        <span>Overgelopen</span><span>{{ overflowed }} L</span>
+      </div>
+      <div class="row">
+        <span>Tuin</span><span>{{ gardenPercent }}%</span>
       </div>
       <div class="bar small">
         <div class="bar-fill garden" :style="{ width: `${gardenPercent}%` }"></div>
       </div>
+
+      <RainChart />
+
+      <label class="field">
+        <span>Tonvolume <b>{{ water.capacity }} L</b></span>
+        <input v-model.number="water.capacity" type="range" min="100" max="600" step="50" />
+      </label>
+      <label class="field">
+        <span>Verbruik huishouden <b>{{ water.usage }} L/u</b></span>
+        <input v-model.number="water.usage" type="range" min="0" max="60" step="5" />
+      </label>
+
       <div class="buttons">
-        <button @click="water.raining = !water.raining">
-          {{ water.raining ? 'Stop rain' : 'Make it rain' }}
+        <button @click="water.raining = !water.raining; disableLive()">
+          {{ water.raining && !live.enabled ? 'Stop regen' : 'Laat regenen' }}
         </button>
         <button @click="water.cutaway = !water.cutaway">
-          {{ water.cutaway ? 'Close the house' : 'Look inside' }}
+          {{ water.cutaway ? 'Sluit huis' : 'Kijk binnen' }}
         </button>
       </div>
       <p class="hint">
-        Click the cloud for rain (manual mode). Click the tap on the barrel to water the garden.
-        Look inside, then click the toilet or the sink tap to use the pump.
+        Lamp bij de ton: groen = genoeg, oranje = bijna leeg, rood = leeg, blauw = loopt over.
+        Klik op de kranen, het afvoerventiel (onderaan de ton) of de wolk.
+      </p>
+    </div>
+
+    <!-- voice commands, with buttons and a text field as a fallback -->
+    <div class="panel">
+      <h3>Spraak</h3>
+      <div class="buttons">
+        <button
+          :class="{ active: speech.listening }"
+          :disabled="!speech.supported"
+          @click="speech.listening ? stopListening() : startListening()"
+        >
+          {{ speech.listening ? 'Ik luister… (stop)' : 'Spreek een commando' }}
+        </button>
+      </div>
+      <p v-if="speech.interim" class="hint">
+        Verstaan: "{{ speech.interim }}"
+      </p>
+      <p v-if="speech.error" class="hint error">
+        {{ speech.error }}
+      </p>
+      <p v-if="!speech.supported" class="hint error">
+        Deze browser ondersteunt geen spraakherkenning (probeer Chrome of Edge). Gebruik de knoppen of typ een commando.
+      </p>
+      <p class="hint">
+        Let op: je browser kan het geluid naar een online dienst sturen om het te verstaan.
+      </p>
+
+      <form class="typed" @submit.prevent="runTyped">
+        <input v-model="typed" type="text" placeholder="Of typ: leeg de ton" />
+        <button type="submit">
+          Voer uit
+        </button>
+      </form>
+
+      <div class="chips">
+        <button v-for="b in BUTTONS" :key="b.label" @click="runCommand(b.phrase, 'knop')">
+          {{ b.label }}
+        </button>
+      </div>
+
+      <ul v-if="speech.log.length" class="log">
+        <li v-for="(entry, i) in speech.log" :key="i" :class="{ bad: !entry.ok }">
+          <div class="heard">
+            {{ entry.source }}: "{{ entry.heard }}"
+          </div>
+          <div class="action">
+            {{ entry.action }}
+          </div>
+          <div>{{ entry.result }}</div>
+        </li>
+      </ul>
+      <p v-else class="hint">
+        Probeer: "zet de regen aan", "hoeveel water zit er in de ton", "leeg de ton", "zet de tijd op 15 uur" of "grotere ton".
       </p>
     </div>
   </div>
@@ -153,13 +234,23 @@ function changePlace(event: Event) {
 .hud {
   position: fixed;
   top: 12px;
-  left: 12px;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
   pointer-events: none;
   font-family: system-ui, sans-serif;
 }
+.hud-left {
+  left: 12px;
+}
+.hud-right {
+  right: 12px;
+}
 .panel {
-  width: 240px;
+  width: 250px;
   padding: 12px 14px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.88);
@@ -212,19 +303,24 @@ button {
   font-size: 12px;
   cursor: pointer;
 }
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.buttons button.active {
+  background: #3b8fd9;
+}
 .hint {
   margin: 10px 0 0;
   font-size: 11px;
   line-height: 1.4;
   color: #52606d;
 }
-
-.hud-right {
-  left: auto;
-  right: 12px;
+.hint.error {
+  color: #b3261e;
 }
-.buttons button.active {
-  background: #3b8fd9;
+.hint a {
+  color: #1d6fb8;
 }
 .place,
 .buttons select {
@@ -252,10 +348,65 @@ button {
   width: 100%;
   margin: 6px 0 2px;
 }
-.hint.error {
-  color: #b3261e;
+.field {
+  display: block;
+  margin-top: 10px;
 }
-.hint a {
-  color: #1d6fb8;
+.field span {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.field input {
+  width: 100%;
+  margin: 2px 0 0;
+}
+.typed {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.typed input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 6px;
+  border: 1px solid #c3ccd6;
+  font-size: 12px;
+}
+.typed button {
+  flex: 0 0 auto;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+.chips button {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  background: #e3e9f0;
+  color: #1d2733;
+}
+.log {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.log li {
+  padding: 6px 0;
+  border-top: 1px solid #d9e2ec;
+}
+.log .heard {
+  color: #52606d;
+}
+.log .action {
+  font-weight: 600;
+}
+.log .bad .action {
+  color: #b3261e;
 }
 </style>
