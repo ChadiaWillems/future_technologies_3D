@@ -27,21 +27,22 @@ Productiebuild: `npm run build`, en bekijken met `npm run preview`.
 | --- | --- |
 | Klik op de **wolk** (handmatige modus) | Het begint of stopt met regenen |
 | Knop **Echte data** | Echte neerslag en bewolking van Open-Meteo sturen de scène; de tijd loopt als time-lapse |
-| Plaats kiezen, **Pauze**, **Nu**, tijdsschuif | Een andere plek of een ander moment bekijken |
+| Een **plaats** kiezen, zoeken (elke plaats ter wereld) of "Gebruik mijn locatie"; **Pauze**, **Nu**, tijdsschuif | Een andere plek of een ander moment bekijken |
 | Klik op de **tuinkraan** op de ton | De tuin krijgt water en het niveau zakt |
 | Klik op het **afvoerventiel** onderaan de ton | De ton loopt leeg |
 | **Kijk binnen** en klik op het toilet of de gootsteenkraan | Water uit de ton wordt in huis gebruikt (met pomp) |
 | Sliders **Tonvolume** en **Verbruik huishouden** | De ton wordt groter of kleiner; het huishouden gebruikt constant water |
-| **Spreek een commando**, de knoppen of het typveld | Zie [spraakcommando's](docs/fase-3.md#a-spraak) |
+| Het **microfoon-icoon** rechtsboven, of vink **"Hey Regenton"** aan en zeg het | Spraakcommando's, zie [docs/fase-3.md](docs/fase-3.md#a-spraak) |
 
 De lamp op de paal bij de ton toont het niveau: groen = genoeg, oranje = bijna leeg, rood = leeg, blauw = loopt over.
 
 ## Bronnen van data
 
 - **Neerslag en bewolking per uur**: [Open-Meteo](https://open-meteo.com/) (gratis, geen sleutel, licentie CC BY 4.0). We vragen 1 dag terug en 2 dagen vooruit op (72 uur). Het antwoord wordt 30 minuten in `localStorage` bewaard.
+- **Plaatsen zoeken**: de [geocoding-API van Open-Meteo](https://open-meteo.com/en/docs/geocoding-api) (zelfde dienst, gratis). Alleen de ingetypte plaatsnaam wordt verstuurd.
 - **Zon en maan**: [SunCalc](https://github.com/mourner/suncalc) (berekening, geen data-aanvraag). Dit bepaalt alleen het licht: dag, nacht, zonsondergang, sterren en maan.
 
-Alleen de gekozen plaats (breedte- en lengtegraad) gaat naar Open-Meteo. Spraakherkenning van de browser kan het geluid naar een online dienst sturen (Chrome); er staat een waarschuwing in het paneel.
+Alleen de gekozen plaats (breedte- en lengtegraad) en een ingetypte plaatsnaam gaan naar Open-Meteo. "Gebruik mijn locatie" vraagt toestemming aan je browser en stuurt de coördinaten alleen naar Open-Meteo. Spraakherkenning van de browser kan het geluid naar een online dienst sturen (Chrome); er staat een waarschuwing in het paneel.
 
 ## Model en formules
 

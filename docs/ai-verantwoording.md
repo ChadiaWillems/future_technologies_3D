@@ -51,4 +51,4 @@ De AI heeft daarnaast zelf het hele paneel in het Nederlands gezet, passend bij 
 
 - De scène draait echt op WebGPU (gecontroleerd met `getContext('webgpu')`).
 - De zonnehoogte en het regenverloop klopten met Open-Meteo (Brugge en Singapore).
-- Alle spraakcommando's werken via het typveld en de knoppen. De microfoon zelf is **niet** getest in deze omgeving. *[Test dit zelf in Chrome of Edge en noteer het resultaat.]*
+- Alle spraakcommando's werken met getypte zinnen en de activeringszin "Hey Regenton" werkt met een nagebootste spraakherkenner. De microfoon zelf is **niet** getest in deze omgeving. *[Test dit zelf in Chrome of Edge en noteer het resultaat.]*

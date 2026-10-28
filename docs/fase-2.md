@@ -28,7 +28,14 @@ Tussen twee uren wordt lineair geïnterpoleerd. De tijden van Open-Meteo zijn lo
 
 ## Plaatsen
 
-Brugge (standaard), Kortrijk, Brussel, Reykjavik, Madrid, Tromsø en Singapore. Singapore is handig om te testen: daar regent het vaak en krachtig.
+Je kunt elke plaats ter wereld kiezen:
+
+- **Keuzelijst** met zeven vaste plaatsen: Brugge (standaard), Kortrijk, Brussel, Reykjavik, Madrid, Tromsø en Singapore. Singapore is handig om te testen: daar regent het vaak en krachtig.
+- **Zoekveld**: typ een plaatsnaam (bv. "Parijs") en kies uit de resultaten. Dat gebruikt de [geocoding-API van Open-Meteo](https://open-meteo.com/en/docs/geocoding-api) (gratis, geen sleutel); alleen de ingetypte naam wordt verstuurd. Accenten maken niet uit ("Tromso" vindt Tromsø).
+- **Gebruik mijn locatie**: vraagt je browser om je positie. Dat gebeurt alleen als je op de knop klikt en je browser vraagt toestemming. De coördinaten gaan alleen naar Open-Meteo om het weer daar op te halen.
+- **Spraak**: "ga naar Parijs", "zet de plaats op New York" of "toon het weer in Tokio".
+
+De tijdzone komt uit de data (`timezone=auto`), dus de lokale tijd, de zonsopgang en de nacht kloppen voor elke plaats.
 
 ## Dingen om op te letten
 

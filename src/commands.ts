@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
-import { disableLive, weatherData } from './liveController'
-import { formatLocal } from './liveData'
+import { disableLive, enableLive, weatherData } from './liveController'
+import { formatLocal, searchPlaces } from './liveData'
+import { normalize, parseWake } from './wakeWord'
 import { env, live, water } from './waterState'
 
 // Voice commands (Web Speech API) and the text/button fallbacks that run the same commands.
@@ -16,13 +17,20 @@ export interface LogEntry {
   source: 'spraak' | 'tekst' | 'knop'
 }
 
-const SpeechRecognitionClass: any = typeof window !== 'undefined'
-  ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition)
-  : undefined
+/** The browser's speech recogniser (Chrome and Edge have one). Looked up when needed, not all browsers have it. */
+function recognitionClass(): any {
+  if (typeof window === 'undefined') { return undefined }
+  return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition
+}
 
 export const speech = reactive({
-  supported: Boolean(SpeechRecognitionClass),
+  supported: Boolean(recognitionClass()),
+  /** The microphone is on */
   listening: false,
+  /** "Hey Regenton" mode: listening all the time for the wake phrase */
+  wake: false,
+  /** The wake phrase was heard: the next sentence is a command */
+  armed: false,
   /** Text that is being recognised right now */
   interim: '',
   error: '',
@@ -63,11 +71,6 @@ const NUMBER_WORDS: Record<string, number> = {
   vierentwintig: 24,
 }
 
-/** Lower case, no accents or punctuation, so "Één uur!" and "een uur" look the same */
-export function normalize(text: string) {
-  return text.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
 function findHour(text: string): number | null {
   const digits = text.match(/\b(\d{1,2})(?:\s*(?:uur|u|h))?\b/)
   if (digits) { return Number(digits[1]) }
@@ -100,6 +103,39 @@ export function findNumber(text: string): number | null {
   return found ? total : null
 }
 
+const PLACE_STOP_WORDS = new Set([
+  'zet',
+  'de',
+  'het',
+  'een',
+  'plaats',
+  'locatie',
+  'op',
+  'naar',
+  'ga',
+  'verander',
+  'wijzig',
+  'kies',
+  'toon',
+  'laat',
+  'zien',
+  'weer',
+  'regen',
+  'in',
+  'van',
+  'te',
+  'kijk',
+  'mijn',
+  'stad',
+  'dorp',
+  'aub',
+  'alsjeblieft',
+])
+/** What is left of a sentence like "ga naar new york" when the command words are removed: the place name */
+function placeName(text: string) {
+  return text.split(' ').filter(word => word && !PLACE_STOP_WORDS.has(word)).join(' ')
+}
+
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 /** Round to the step of a slider and keep it inside the slider */
 function toSlider(value: number, min: number, max: number, step: number) {
@@ -112,7 +148,7 @@ interface Command {
   label: string
   /** Words that must be recognised */
   matches: (text: string) => boolean
-  run: (text: string) => string
+  run: (text: string) => string | Promise<string>
   /** Questions are also answered out loud when you spoke them */
   isQuestion?: boolean
 }
@@ -263,6 +299,28 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    id: 'place',
+    label: 'Ga naar een plaats',
+    // "ga naar Parijs", "zet de plaats op New York", "toon het weer in Tokio"
+    matches: t => has(t, 'plaats', 'locatie', 'weer in', 'regen in', 'ga naar', 'toon', 'kijk in')
+      && !has(t, 'uur', 'ton', 'kraan', 'tuin', 'verbruik', 'gebruik', 'volume', 'liter', 'regen aan', 'regen uit')
+      && placeName(t).length >= 2,
+    run: async (t) => {
+      const name = placeName(t)
+      try {
+        const found = await searchPlaces(name)
+        if (!found.length) { return `Ik vond geen plaats met de naam "${name}".` }
+        await enableLive(found[0])
+        return live.status === 'ready'
+          ? `Ik toon nu de regen in ${found[0].name}${found[0].detail ? ` (${found[0].detail})` : ''}.`
+          : live.message
+      }
+      catch (error) {
+        return `Zoeken mislukt (${error instanceof Error ? error.message : 'onbekende fout'}). Probeer het later opnieuw.`
+      }
+    },
+  },
+  {
     id: 'time',
     label: 'Zet de tijd',
     matches: t => has(t, 'uur') && has(t, 'tijd', 'zet', 'ga naar', 'spring') && !has(t, 'verbruik', 'gebruik', 'liter'),
@@ -297,18 +355,6 @@ const COMMANDS: Command[] = [
   },
 ]
 
-/** Phrases for the buttons: they go through the same parser as speech, so they test it too. */
-export const BUTTONS: { label: string, phrase: string }[] = [
-  { label: 'Regen aan', phrase: 'zet de regen aan' },
-  { label: 'Regen uit', phrase: 'zet de regen uit' },
-  { label: 'Hoeveel water?', phrase: 'hoeveel water zit er in de ton' },
-  { label: 'Leeg de ton', phrase: 'leeg de ton' },
-  { label: 'Kraan open', phrase: 'open de kraan' },
-  { label: 'Kraan dicht', phrase: 'sluit de kraan' },
-  { label: 'Grotere ton', phrase: 'grotere ton' },
-  { label: 'Kleinere ton', phrase: 'kleinere ton' },
-]
-
 function speak(text: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) { return }
   const utterance = new SpeechSynthesisUtterance(text)
@@ -337,32 +383,107 @@ export function runCommand(heard: string, source: LogEntry['source']) {
     return
   }
   const result = command.run(text)
-  addLog({ heard, action: command.label, result, ok: true, source })
-  if (source === 'spraak' && command.isQuestion) { speak(result) }
+  if (typeof result === 'string') {
+    addLog({ heard, action: command.label, result, ok: true, source })
+    if (source === 'spraak' && command.isQuestion) { speak(result) }
+    return
+  }
+  // an answer that needs a moment (looking up a place): show that first, fill in the result when it arrives
+  addLog({ heard, action: command.label, result: 'Bezig…', ok: true, source })
+  const entry = speech.log[0]
+  result.then((text) => { entry.result = text })
+    .catch((error) => {
+      entry.result = `Dat is niet gelukt (${error instanceof Error ? error.message : 'onbekende fout'}).`
+      entry.ok = false
+    })
 }
 
 const ERROR_TEXT: Record<string, string> = {
-  'not-allowed': 'De microfoon is geblokkeerd. Geef toestemming in je browser, of gebruik de knoppen.',
-  'service-not-allowed': 'Deze browser staat spraakherkenning niet toe. Gebruik de knoppen.',
+  'not-allowed': 'De microfoon is geblokkeerd. Geef toestemming in je browser.',
+  'service-not-allowed': 'Deze browser staat spraakherkenning niet toe.',
   'no-speech': 'Ik heb niets gehoord. Probeer het opnieuw.',
   'audio-capture': 'Er is geen microfoon gevonden.',
-  'network': 'De spraakdienst is niet bereikbaar. Gebruik de knoppen of typ het commando.',
+  'network': 'De spraakdienst is niet bereikbaar.',
 }
 
+const ARMED_SECONDS = 8
 let recognition: any = null
+let armedTimer: ReturnType<typeof setTimeout> | undefined
+let restartTimer: ReturnType<typeof setTimeout> | undefined
+let failures = 0
 
+function createRecognition(continuous: boolean) {
+  const Recognition = recognitionClass()
+  const instance = new Recognition()
+  instance.lang = 'nl-BE'
+  instance.interimResults = true
+  instance.continuous = continuous
+  instance.maxAlternatives = 1
+  return instance
+}
+
+/** A short beep so you hear that the wake phrase was understood */
+function beep() {
+  try {
+    const context = new AudioContext()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.frequency.value = 880
+    gain.gain.value = 0.05
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.12)
+    oscillator.onended = () => { context.close() }
+  }
+  catch { /* no sound available; the screen shows it as well */ }
+}
+
+function arm() {
+  speech.armed = true
+  beep()
+  clearTimeout(armedTimer)
+  armedTimer = setTimeout(() => { speech.armed = false }, ARMED_SECONDS * 1000)
+}
+
+function disarm() {
+  speech.armed = false
+  clearTimeout(armedTimer)
+}
+
+/**
+ * A finished sentence while "Hey Regenton" mode is on: only the wake phrase (and what follows it, or the next
+ * sentence) is used. Everything else is ignored and is not stored or shown.
+ */
+export function handleWakeSentence(sentence: string) {
+  const { heard, command } = parseWake(sentence)
+  if (heard) {
+    if (command) {
+      disarm()
+      runCommand(command, 'spraak')
+    }
+    else { arm() }
+    return
+  }
+  if (speech.armed) {
+    disarm()
+    runCommand(sentence.trim(), 'spraak')
+  }
+}
+
+/** One command: press the microphone icon and say it. In "Hey Regenton" mode the icon works like the wake phrase. */
 export function startListening() {
-  if (!SpeechRecognitionClass) {
-    speech.error = 'Spraakherkenning wordt door deze browser niet ondersteund. Gebruik Chrome of Edge, of de knoppen.'
+  if (speech.wake) {
+    arm()
+    return
+  }
+  if (!recognitionClass()) {
+    speech.error = 'Spraakherkenning wordt door deze browser niet ondersteund. Gebruik Chrome of Edge.'
     return
   }
   speech.error = ''
   speech.interim = ''
-  recognition = new SpeechRecognitionClass()
-  recognition.lang = 'nl-BE'
-  recognition.interimResults = true
-  recognition.continuous = false
-  recognition.maxAlternatives = 1
+  recognition = createRecognition(false)
   recognition.onstart = () => { speech.listening = true }
   recognition.onresult = (event: any) => {
     let text = ''
@@ -378,7 +499,7 @@ export function startListening() {
     }
   }
   recognition.onerror = (event: any) => {
-    speech.error = ERROR_TEXT[event.error] ?? `Spraakherkenning mislukt (${event.error}). Gebruik de knoppen.`
+    speech.error = ERROR_TEXT[event.error] ?? `Spraakherkenning mislukt (${event.error}).`
   }
   recognition.onend = () => {
     speech.listening = false
@@ -390,4 +511,61 @@ export function startListening() {
 
 export function stopListening() {
   recognition?.stop()
+}
+
+function listenForWake() {
+  if (!speech.wake) { return }
+  recognition = createRecognition(true)
+  recognition.onstart = () => { speech.listening = true }
+  recognition.onresult = (event: any) => {
+    failures = 0
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const result = event.results[i]
+      if (result.isFinal) {
+        speech.interim = ''
+        handleWakeSentence(result[0].transcript)
+      }
+      else if (speech.armed) { speech.interim = result[0].transcript }
+    }
+  }
+  recognition.onerror = (event: any) => {
+    // a quiet moment ends a session now and then; that is normal and it is simply started again
+    if (event.error === 'no-speech' || event.error === 'aborted') { return }
+    if (event.error === 'network' && ++failures < 3) { return }
+    speech.error = ERROR_TEXT[event.error] ?? `Spraakherkenning mislukt (${event.error}).`
+    stopWake()
+  }
+  recognition.onend = () => {
+    speech.listening = false
+    speech.interim = ''
+    // browsers end a continuous session after a while: start again as long as the mode is on
+    if (speech.wake) { restartTimer = setTimeout(listenForWake, 400) }
+  }
+  try { recognition.start() }
+  catch {
+    speech.error = 'Spraakherkenning kon niet starten. Probeer het nog eens.'
+    stopWake()
+  }
+}
+
+/** Turn "Hey Regenton" mode on: the microphone stays on until you turn it off. */
+export function startWake() {
+  if (!recognitionClass()) {
+    speech.error = 'Spraakherkenning wordt door deze browser niet ondersteund. Gebruik Chrome of Edge.'
+    return
+  }
+  speech.error = ''
+  speech.wake = true
+  failures = 0
+  listenForWake()
+}
+
+export function stopWake() {
+  speech.wake = false
+  disarm()
+  clearTimeout(restartTimer)
+  try { recognition?.stop() }
+  catch { /* it was not running */ }
+  speech.listening = false
+  speech.interim = ''
 }

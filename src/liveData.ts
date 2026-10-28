@@ -7,6 +7,8 @@ export interface Place {
   name: string
   lat: number
   lon: number
+  /** Region and country, for places found by searching */
+  detail?: string
 }
 
 export const PLACES: Place[] = [
@@ -18,6 +20,28 @@ export const PLACES: Place[] = [
   { name: 'Tromsø', lat: 69.649, lon: 18.956 },
   { name: 'Singapore', lat: 1.352, lon: 103.82 },
 ]
+
+export const samePlace = (a: Place, b: Place) => Math.abs(a.lat - b.lat) < 0.0005 && Math.abs(a.lon - b.lon) < 0.0005
+
+/** Look up places by name with Open-Meteo's geocoding service (free, no key). Only the typed name is sent. */
+export async function searchPlaces(query: string): Promise<Place[]> {
+  const params = new URLSearchParams({ name: query, count: '6', language: 'nl', format: 'json' })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const response = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${params}`, { signal: controller.signal })
+    if (!response.ok) { throw new Error(`Open-Meteo antwoordde met status ${response.status}`) }
+    const json = await response.json()
+    // no match gives an answer without `results`
+    return (json.results ?? []).map((r: any): Place => ({
+      name: r.name,
+      lat: r.latitude,
+      lon: r.longitude,
+      detail: [r.admin1, r.country].filter(Boolean).join(', '),
+    }))
+  }
+  finally { clearTimeout(timeout) }
+}
 
 const HOURLY = ['precipitation', 'cloud_cover'] as const
 type Variable = typeof HOURLY[number]

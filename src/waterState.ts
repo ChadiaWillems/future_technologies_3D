@@ -1,4 +1,6 @@
 import { reactive, watch } from 'vue'
+import { PLACES } from './liveData'
+import type { Place } from './liveData'
 
 /** Default size of the rain barrel in litres */
 export const BARREL_LITERS = 300
@@ -32,7 +34,7 @@ export const live = reactive({
   enabled: false,
   status: 'idle' as 'idle' | 'loading' | 'ready' | 'error',
   message: '',
-  placeIndex: 0,
+  place: PLACES[0] as Place, // any place on Earth: a preset, a search result or your own location
   playing: true,
   secondsPerHour: 6, // time-lapse: how many real seconds one hour of the data lasts
   time: 0, // the moment being shown, as a UTC timestamp in ms

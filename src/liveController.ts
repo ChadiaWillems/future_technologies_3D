@@ -1,6 +1,6 @@
 import { shallowRef } from 'vue'
-import { fetchWeather, PLACES } from './liveData'
-import type { WeatherData } from './liveData'
+import { fetchWeather, samePlace } from './liveData'
+import type { Place, WeatherData } from './liveData'
 import { clearHistory, live, manualClock, water } from './waterState'
 
 export const weatherData = shallowRef<WeatherData | null>(null)
@@ -8,15 +8,15 @@ export const weatherData = shallowRef<WeatherData | null>(null)
 const clampTime = (t: number) => Math.min(Math.max(t, live.start), live.end)
 
 // Load the data for a place and switch the scene over to it
-export async function enableLive(placeIndex = live.placeIndex) {
+export async function enableLive(place: Place = live.place) {
   live.enabled = true
   live.status = 'loading'
   live.message = ''
-  live.placeIndex = placeIndex
+  live.place = place
   try {
-    const data = await fetchWeather(PLACES[placeIndex])
+    const data = await fetchWeather(place)
     // the user may have picked another place or switched back to manual while this was loading
-    if (!live.enabled || live.placeIndex !== placeIndex) { return }
+    if (!live.enabled || !samePlace(live.place, place)) { return }
     weatherData.value = data
     live.start = data.times[0]
     live.end = data.times[data.times.length - 1]
@@ -29,6 +29,21 @@ export async function enableLive(placeIndex = live.placeIndex) {
     live.status = 'error'
     live.message = `Could not load weather data (${error instanceof Error ? error.message : 'unknown error'}). Using manual mode.`
   }
+}
+
+/** Ask the browser for where you are. Only an explicit click calls this, and the browser asks permission. */
+export function currentPosition(): Promise<Place> {
+  return new Promise((resolve, reject) => {
+    if (!('geolocation' in navigator)) {
+      reject(new Error('Deze browser kan je locatie niet opvragen.'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      position => resolve({ name: 'Mijn locatie', lat: position.coords.latitude, lon: position.coords.longitude }),
+      () => reject(new Error('Je locatie is niet beschikbaar of de toestemming is geweigerd.')),
+      { timeout: 10_000 },
+    )
+  })
 }
 
 export function disableLive() {

@@ -88,22 +88,33 @@ De Web Speech API in het Nederlands (`nl-BE`), in [`src/commands.ts`](../src/com
 | "zet het verbruik op 30", "huishoudverbruik 25 liter per uur" | Zet het verbruik van het huishouden (0 tot 60 L/u, stappen van 5) |
 | "meer verbruik" / "minder verbruik" / "geen verbruik" | Verbruik 10 L/u hoger of lager, of op 0 |
 | "pauzeer" / "speel af" | Stopt of hervat de tijd |
+| "ga naar Parijs", "zet de plaats op New York", "toon het weer in Tokio" | Zoekt de plaats op en laadt daar de echte regen (de eerste treffer van de zoekdienst) |
 
 ### Wat je ziet
 
-Een **logboek** toont per commando wat er gehoord, getypt of gedrukt werd, als welk commando het begrepen werd, en wat het gevolg was. Een zin die niet begrepen wordt, staat er in het rood bij met voorbeelden.
+Een **logboek** (paneel "Spraakcommando's" links) toont per commando wat er verstaan werd, als welk commando het begrepen werd, en wat het gevolg was. Het paneel verschijnt pas zodra je iets gezegd hebt. Een zin die niet begrepen wordt, staat er in het rood bij met voorbeelden.
 
-### Terugval
+### Twee manieren om te spreken
 
-- **Knoppen** voor de belangrijkste commando's; ze gaan door dezelfde herkenner als spraak.
-- Een **typveld** waar je een zin kunt intypen.
-- Als spraakherkenning niet werkt (andere browser, microfoon geblokkeerd, geen netwerk), staat er een duidelijke melding en blijven de knoppen werken.
+1. **Microfoonknop**: het microfoon-icoon rechtsboven in het widget "Echte neerslag". Klik, zeg één commando en de microfoon gaat weer uit. Tijdens het luisteren wordt het icoon rood en pulseert het, en onder de titel staat wat er verstaan wordt.
+2. **"Hey Regenton"**: vink "Zeg \"Hey Regenton\" om een commando te starten" aan. De microfoon blijft dan aan en wacht op de activeringszin.
+   - "Hey Regenton, leeg de ton" werkt in één adem. Zeg je alleen "Hey Regenton", dan hoor je een korte piep, wordt het icoon rood ("Ja? Zeg je commando…") en wordt je volgende zin het commando. Na 8 seconden stilte vervalt dat.
+   - Varianten die de herkenner vaak geeft worden ook aanvaard ("hey regen ton", "hoi regenton", "hallo regentom"). Er moet altijd een begroeting voor staan, zodat een gewone zin als "het regent op de ton" niets doet.
+   - Alles wat je zegt zonder de activeringszin wordt genegeerd: het wordt niet getoond en niet bewaard.
+   - Browsers beëindigen een lange luistersessie na een tijdje; de pagina start die vanzelf opnieuw zolang de modus aan staat. Bij een geweigerde microfoon of een niet bereikbare spraakdienst gaat de modus uit, met een melding.
+   - In deze modus werkt het icoon als "ik ga nu praten": het slaat de activeringszin over.
+
+De herkenning van de activeringszin staat los van de browser in [`src/wakeWord.ts`](../src/wakeWord.ts), de luistermodus in [`src/commands.ts`](../src/commands.ts).
+
+### Zonder microfoon
+
+Er zijn geen knoppen of typveld meer voor de commando's (die zijn op mijn verzoek weggehaald). Werkt spraakherkenning niet (andere browser, microfoon geblokkeerd, geen netwerk), dan staat er een melding en kun je de scène nog steeds bedienen met de knoppen en sliders van de panelen zelf: regen, tonvolume, verbruik, kranen, het ventiel, de plaats en de tijd.
 
 ### Privacy
 
-In Chrome kan het geluid naar een online dienst gaan voor de herkenning. Dat staat als waarschuwing in het paneel en de microfoon gaat pas aan als je op de knop drukt.
+In Chrome kan het geluid naar een online dienst gaan voor de herkenning. Dat staat als waarschuwing in het widget zodra de microfoon aan staat. "Hey Regenton" staat standaard uit: dan staat de microfoon alleen aan als je zelf op het icoon klikt.
 
 ## Getest en niet getest
 
-- **Getest**: alle commando's via het typveld en de knoppen; de simulatie met echte data (Brugge en Singapore) en handmatig; de sliders; het openen van het ventiel.
-- **Niet getest**: de echte microfoon. Die was geblokkeerd in de omgeving waarin ik testte. Probeer dit zelf in Chrome of Edge.
+- **Getest**: alle commando's met getypte zinnen (via een tijdelijke testingang, die inmiddels uit de interface is); de simulatie met echte data (Brugge en Singapore) en handmatig; de sliders; het openen van het ventiel. De activeringszin is getest met een nagebootste spraakherkenner: aanzetten, gewone zinnen negeren, de zin alleen en met commando, 8 seconden verlopen, automatisch herstarten en een geweigerde microfoon.
+- **Niet getest**: de echte microfoon, ook niet "Hey Regenton". Die was geblokkeerd in de omgeving waarin ik testte. Probeer dit zelf in Chrome of Edge en let op hoe goed "Hey Regenton" wordt verstaan; de varianten zijn een schatting.
