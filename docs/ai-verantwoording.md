@@ -33,6 +33,9 @@ De belangrijkste opdrachten die ik gaf (licht ingekort):
 13. "zet de knop van de spreek commando ook rechts, maar zet het in de bovenste widget als een icon", daarna "doe dit dan weg" (het Spraak-paneel met knoppen en typveld)
 14. "geef dit project een zin zoals 'hey ...' dat aangezet kan worden dat je zo commando's kan starten"
 15. "verander alle widgets naar één widget met locatie, regenton info en dan de grafiek aub met tussentitels & doe deze knoppen weg, doe de 'hey regenton' met een toggle switch ipv een check blokje"
+16. "hoe stop ik dat automatisch spelen, dat mag niet...", daarna "laat het de live tijd volgen, maar dat je het wel kan aanpassen"
+17. "doe dit zinnetje in het grijzig aub" (de melding over de tijd)
+18. "maak de grafiek van de afgelopen 3 dagen, niet dat de volgende dag al getoont kan worden" en "toon het uur wel" (uurmarkeringen en het tijdstip bij de marker)
 
 ## Wat de AI voorstelde en wat ik bijstuurde
 

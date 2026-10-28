@@ -61,14 +61,14 @@ export interface WeatherSample {
 
 const CACHE_MINUTES = 30
 
-// One day back is enough context, and two days ahead is what the free forecast gives reliably
+// The last three days (the forecast of the rest of today is fetched as well, but never shown)
 function url(place: Place) {
   const params = new URLSearchParams({
     latitude: String(place.lat),
     longitude: String(place.lon),
     hourly: HOURLY.join(','),
-    past_days: '1',
-    forecast_days: '2',
+    past_days: '3',
+    forecast_days: '1',
     timezone: 'auto',
   })
   return `https://api.open-meteo.com/v1/forecast?${params}`
@@ -90,7 +90,7 @@ function writeCache(key: string, json: unknown) {
 }
 
 export async function fetchWeather(place: Place): Promise<WeatherData> {
-  const key = `open-meteo:rain:${place.lat},${place.lon}`
+  const key = `open-meteo:rain-3days:${place.lat},${place.lon}`
   let json = readCache(key)
   if (!json) {
     const controller = new AbortController()
@@ -164,4 +164,13 @@ export function formatLocal(data: WeatherData, t: number) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date)
+}
+
+const HOUR = 3_600_000
+export const WINDOW_HOURS = 72
+
+/** What is shown: the last 3 days up to now. Nothing from the future. */
+export function windowFor(data: WeatherData, now = Date.now()) {
+  const end = Math.min(data.times[data.times.length - 1], now)
+  return { start: Math.max(data.times[0], end - WINDOW_HOURS * HOUR), end }
 }

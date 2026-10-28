@@ -28,8 +28,8 @@ Alles zit in één widget rechtsboven met drie onderdelen: **Locatie**, **Regent
 | Doen | Effect |
 | --- | --- |
 | Klik op de **wolk** (handmatige modus) | Het begint of stopt met regenen |
-| Knop **Echte data** | Echte neerslag en bewolking van Open-Meteo sturen de scène; de tijd loopt als time-lapse |
-| Een **plaats** kiezen, zoeken (elke plaats ter wereld) of "Gebruik mijn locatie"; de **tijdsschuif** of klikken op de grafiek | Een andere plek of een ander moment bekijken (de tijd pauzeren of hervatten kan met "pauzeer" en "speel af") |
+| Knop **Echte data** | Echte neerslag en bewolking van Open-Meteo sturen de scène. De tijd volgt de echte klok (LIVE) |
+| Een **plaats** kiezen, zoeken (elke plaats ter wereld) of "Gebruik mijn locatie"; de **tijdsschuif** of klikken op de grafiek | Een andere plek of een ander moment bekijken. Verzet je de tijd, dan blijft hij daar staan tot je op "Terug naar live" klikt (of "terug naar live" zegt). Schuif je hem vooruit, dan loopt de regen van de uren ertussen in de ton. Versneld laten lopen kan met "speel af", stoppen met "pauzeer" |
 | Klik op de **tuinkraan** op de ton | De tuin krijgt water en het niveau zakt |
 | Klik op het **afvoerventiel** onderaan de ton | De ton loopt leeg |
 | **Kijk binnen** en klik op het toilet of de gootsteenkraan | Water uit de ton wordt in huis gebruikt (met pomp) |
@@ -40,7 +40,7 @@ De lamp op de paal bij de ton toont het niveau: groen = genoeg, oranje = bijna l
 
 ## Bronnen van data
 
-- **Neerslag en bewolking per uur**: [Open-Meteo](https://open-meteo.com/) (gratis, geen sleutel, licentie CC BY 4.0). We vragen 1 dag terug en 2 dagen vooruit op (72 uur). Het antwoord wordt 30 minuten in `localStorage` bewaard.
+- **Neerslag en bewolking per uur**: [Open-Meteo](https://open-meteo.com/) (gratis, geen sleutel, licentie CC BY 4.0). We vragen de afgelopen 3 dagen op en tonen alleen tot nu (72 uur, niets uit de toekomst). Het antwoord wordt 30 minuten in `localStorage` bewaard.
 - **Plaatsen zoeken**: de [geocoding-API van Open-Meteo](https://open-meteo.com/en/docs/geocoding-api) (zelfde dienst, gratis). Alleen de ingetypte plaatsnaam wordt verstuurd.
 - **Zon en maan**: [SunCalc](https://github.com/mourner/suncalc) (berekening, geen data-aanvraag). Dit bepaalt alleen het licht: dag, nacht, zonsondergang, sterren en maan.
 
@@ -92,3 +92,7 @@ Techniek: Vue 3, TresJS 5 met `WebGPURenderer` (valt automatisch terug op WebGL2
 ## Bronvermelding
 
 Weerdata door [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Zonnestand door [SunCalc](https://github.com/mourner/suncalc) (BSD).
+
+## Reflectie
+
+Het was interessant om eens 3D shapes en animaties te leren met TresJS. Het nam veel werk in als ik het zelf deed, met AI ging alles veel sneller. Maar wel leuk om eerst zelf te sukkelen met TresJS om te leren hoe het werkt en wat je er allemaal mee kan doen. Als ik geen AI had gebruikt zou ik veel minder dingen kunnen toegevoegd hebben en zou ik enkel de standaard basis dingen erin steken. Wat niet werkte zou waarschijnlijk het spraak gedeelte zijn, omdat dat gewoon een leuke extra is wat, als ik het zelf moest doen, veel tijd zou innemen, maar door AI veel vlotter ging. Ik heb dit gewoon direct met AI gedaan om het mezelf makkelijker te maken.

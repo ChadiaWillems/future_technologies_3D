@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { disableLive, enableLive, weatherData } from './liveController'
+import { disableLive, enableLive, followLive, weatherData } from './liveController'
 import { formatLocal, searchPlaces } from './liveData'
 import { normalize, parseWake } from './wakeWord'
 import { env, live, water } from './waterState'
@@ -299,6 +299,16 @@ const COMMANDS: Command[] = [
     },
   },
   {
+    id: 'follow-live',
+    label: 'Volg de live tijd',
+    matches: t => has(t, 'terug naar live', 'volg de live', 'live tijd', 'echte tijd', 'ga naar nu', 'zet de tijd op nu', 'huidige tijd', 'tijd op live'),
+    run: () => {
+      if (!live.enabled || !weatherData.value) { return 'Zet eerst "Echte data" aan, want alleen daar is er een live tijd.' }
+      followLive()
+      return 'De tijd volgt weer de echte klok (live).'
+    },
+  },
+  {
     id: 'place',
     label: 'Ga naar een plaats',
     // "ga naar Parijs", "zet de plaats op New York", "toon het weer in Tokio"
@@ -331,6 +341,8 @@ const COMMANDS: Command[] = [
       if (hour === null || hour > 24) { return 'Ik heb geen uur verstaan. Zeg bijvoorbeeld "zet de tijd op 15 uur".' }
       const offset = data.utcOffsetSeconds * 1000
       const dayStart = Math.floor((live.time + offset) / 86_400_000) * 86_400_000
+      live.following = false
+      live.playing = false
       live.time = Math.min(live.end, Math.max(live.start, dayStart + hour * 3_600_000 - offset))
       return `De tijd staat nu op ${String(hour).padStart(2, '0')}:00 (${formatLocal(data, live.time)}).`
     },
@@ -341,7 +353,8 @@ const COMMANDS: Command[] = [
     matches: t => has(t, 'pauze', 'pauzeer', 'wacht') && !has(t, 'regen'),
     run: () => {
       live.playing = false
-      return 'De tijd staat stil.'
+      live.following = false
+      return 'De tijd staat stil op dit moment. Zeg "terug naar live" om de echte tijd weer te volgen.'
     },
   },
   {
@@ -349,8 +362,9 @@ const COMMANDS: Command[] = [
     label: 'Laat de tijd lopen',
     matches: t => has(t, 'speel af', 'verder', 'hervat', 'laat de tijd lopen'),
     run: () => {
+      live.following = false
       live.playing = true
-      return 'De tijd loopt weer.'
+      return 'De tijd loopt versneld (1 uur is 6 seconden).'
     },
   },
 ]

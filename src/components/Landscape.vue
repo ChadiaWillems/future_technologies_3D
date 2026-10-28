@@ -3,7 +3,7 @@ import { useLoop, useTres } from '@tresjs/core/webgpu'
 import { Color, Fog, Object3D } from 'three'
 import { computed, ref, watch } from 'vue'
 import { toggleManualRain, weatherData } from '../liveController'
-import { formatLocal, sampleWeather, skyAt } from '../liveData'
+import { formatLocal, sampleWeather, skyAt, windowFor } from '../liveData'
 import { ROOF_AREA_M2, RUNOFF, stepBarrel } from '../rainModel'
 import { createSky, createTextures } from '../textures'
 import { env, live, manualClock, recordLevel, water } from '../waterState'
@@ -275,22 +275,65 @@ function updateDrop(drop: typeof dropData[number], delta: number) {
 }
 
 const DEG = Math.PI / 180
+const HOUR = 3_600_000
 const smooth = (edge0: number, edge1: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
   return t * t * (3 - 2 * t)
 }
 
 // Fill `env` with what the scene should react to: real data when it is loaded, the old manual behaviour otherwise
+// The moment of the data that was handled in the previous frame, and which data that was
+let lastLiveTime = 0
+let lastData: unknown = null
+let lastWindowUpdate = 0
+
 function updateEnvironment(delta: number) {
   const data = weatherData.value
   let rain: number
   let hours: number
   if (liveOn.value && data) {
-    hours = live.playing ? delta / live.secondsPerHour : 0
-    if (live.playing) {
-      live.time += hours * 3_600_000
-      if (live.time > live.end) { live.time = live.start }
+    // the last 3 days up to now: the window moves along with the clock (every few seconds is enough)
+    const now = Date.now()
+    if (data !== lastData || now - lastWindowUpdate > 5000) {
+      lastWindowUpdate = now
+      const window = windowFor(data, now)
+      live.start = window.start
+      live.end = window.end
     }
+    // the time follows the real clock; if you set another moment it stays there (or runs as a time-lapse after "speel af")
+    if (live.following) {
+      live.time = Math.min(data.times[data.times.length - 1], Math.max(live.start, now))
+    }
+    else {
+      if (live.playing) {
+        live.time += (delta / live.secondsPerHour) * HOUR
+        if (live.time > live.end) { live.time = live.start }
+      }
+      // the window moves on: a moment that has dropped out of it is no longer shown
+      if (live.time < live.start) { live.time = live.start }
+    }
+    if (data !== lastData) {
+      // other place or fresh data: nothing flows between two different moments
+      lastData = data
+      lastLiveTime = live.time
+    }
+    // time that went by since the previous frame, whether it ran or you moved the slider forward.
+    // Moving back (or a restart of the data) lets nothing flow, and nothing is taken out of the barrel.
+    let moved = (live.time - lastLiveTime) / HOUR
+    lastLiveTime = live.time
+    if (!(moved > 0 && moved <= 72)) { moved = 0 }
+    // a jump covers many hours: the rain of every 10 minutes in between runs into the barrel too
+    const steps = Math.max(1, Math.ceil(moved * 6))
+    for (let k = 1; k < steps; k++) {
+      const t = live.time - ((moved * HOUR * (steps - k)) / steps)
+      const passing = sampleWeather(data, t).precipitation
+      const part = stepBarrel({ liters: water.fill * water.capacity, capacity: water.capacity, rain: passing, hours: moved / steps, useLitersPerHour: water.usage })
+      water.fill = part.liters / water.capacity
+      water.used += part.used
+      water.overflowed += part.overflow
+      recordLevel(t, part.liters, passing)
+    }
+    hours = moved / steps // the last part is done below, with the weather of this moment
     const w = sampleWeather(data, live.time)
     const astro = skyAt(new Date(live.time), data.place)
     env.sunAltitude = astro.sunAltitude

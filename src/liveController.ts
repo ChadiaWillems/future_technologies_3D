@@ -1,5 +1,5 @@
 import { shallowRef } from 'vue'
-import { fetchWeather, samePlace } from './liveData'
+import { fetchWeather, samePlace, windowFor } from './liveData'
 import type { Place, WeatherData } from './liveData'
 import { clearHistory, live, manualClock, water } from './waterState'
 
@@ -18,9 +18,12 @@ export async function enableLive(place: Place = live.place) {
     // the user may have picked another place or switched back to manual while this was loading
     if (!live.enabled || !samePlace(live.place, place)) { return }
     weatherData.value = data
-    live.start = data.times[0]
-    live.end = data.times[data.times.length - 1]
+    const window = windowFor(data)
+    live.start = window.start
+    live.end = window.end
     live.time = clampTime(Date.now())
+    live.following = true
+    live.playing = false
     clearHistory()
     live.status = 'ready'
   }
@@ -55,7 +58,10 @@ export function disableLive() {
   manualClock.time = 0
 }
 
-export function jumpToNow() {
+/** Back to the real, current time, which keeps following the clock */
+export function followLive() {
+  live.playing = false
+  live.following = true
   live.time = clampTime(Date.now())
 }
 

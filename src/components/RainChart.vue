@@ -8,11 +8,11 @@ import { history, live, manualClock, water } from '../waterState'
 // With real data the chart covers all of the data: hover to read values, click to jump to that moment.
 // In manual mode it shows the last 12 simulated hours (1 hour = 6 seconds).
 const WIDTH = 330
-const HEIGHT = 175
+const HEIGHT = 188
 const LEFT = 44
 const RIGHT = 10
 const TOP = 24
-const BOTTOM = 24
+const BOTTOM = 38
 const plotWidth = WIDTH - LEFT - RIGHT
 const plotHeight = HEIGHT - TOP - BOTTOM
 const baseline = TOP + plotHeight
@@ -38,7 +38,8 @@ const rainBars = computed(() => {
   const data = weatherData.value
   if (isLive.value && data) {
     const rain = data.values.precipitation
-    return data.times.map((t, i) => ({ t: t - HOUR, length: HOUR, rain: rain[i] }))
+    // only up to now: nothing from the future
+    return data.times.map((t, i) => ({ t: t - HOUR, length: HOUR, rain: rain[i] })).filter(bar => bar.t < live.end)
   }
   return history.points.map(p => ({ t: p.t - POINT_EVERY, length: POINT_EVERY, rain: p.rain }))
 })
@@ -91,11 +92,31 @@ const ticks = computed(() => {
   return result
 })
 
+// With real data: a mark every 6 hours (06, 12, 18) so you can read the time of day; midnight is the day label
+const hourTicks = computed(() => {
+  const data = weatherData.value
+  if (!isLive.value || !data) { return [] }
+  const offset = data.utcOffsetSeconds * 1000
+  const result: { x: number, label: string }[] = []
+  const first = Math.ceil((range.value.start + offset) / (6 * HOUR)) * 6 * HOUR - offset
+  for (let t = first; t <= range.value.end; t += 6 * HOUR) {
+    const hour = Math.round((((t + offset) / HOUR) % 24 + 24) % 24)
+    if (hour !== 0) { result.push({ x: x(t), label: `${hour} u` }) }
+  }
+  return result
+})
+
 const yTicks = computed(() => [0, 0.5, 1].map(f => ({ y: y(f * water.capacity), label: Math.round(f * water.capacity) })))
 
 const markerTime = computed(() => isLive.value ? live.time : manualClock.time)
 const marker = computed(() => x(markerTime.value))
 const currentLiters = computed(() => Math.round(water.fill * water.capacity))
+// "22:33" for the moment being shown (real data only)
+const markerClock = computed(() => {
+  const data = weatherData.value
+  if (!isLive.value || !data) { return '' }
+  return new Intl.DateTimeFormat('nl-BE', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' }).format(new Date(live.time + data.utcOffsetSeconds * 1000))
+})
 // keep the label of the marker inside the chart
 const markerLabelRight = computed(() => marker.value > LEFT + plotWidth * 0.75)
 
@@ -112,7 +133,11 @@ function onMove(event: MouseEvent) {
   hoverX.value = px >= LEFT && px <= WIDTH - RIGHT ? px : null
 }
 function onClick() {
-  if (isLive.value && hoverTime.value !== null) { live.time = Math.min(live.end, Math.max(live.start, hoverTime.value)) }
+  if (isLive.value && hoverTime.value !== null) {
+    live.following = false
+    live.playing = false
+    live.time = Math.min(live.end, Math.max(live.start, hoverTime.value))
+  }
 }
 
 const readout = computed(() => {
@@ -169,6 +194,10 @@ const readout = computed(() => {
         <line :x1="LEFT" :x2="WIDTH - RIGHT" :y1="tick.y" :y2="tick.y" class="grid" />
         <text :x="LEFT - 5" :y="tick.y + 4" class="label end">{{ tick.label }} L</text>
       </g>
+      <g v-for="tick in hourTicks" :key="`h${tick.x}`">
+        <line :x1="tick.x" :x2="tick.x" :y1="baseline" :y2="baseline + 4" class="hour-tick" />
+        <text :x="tick.x" :y="baseline + 14" class="label hour-label">{{ tick.label }}</text>
+      </g>
       <g v-for="tick in ticks" :key="tick.label">
         <line :x1="tick.x" :x2="tick.x" :y1="TOP" :y2="baseline + 4" class="day" />
         <text v-if="tick.x < WIDTH - RIGHT - 22" :x="tick.x + 4" :y="HEIGHT - 6" class="label day-label" :class="{ capital: isLive }">{{ tick.label }}</text>
@@ -196,7 +225,7 @@ const readout = computed(() => {
       <!-- the moment being shown, with the current level -->
       <line :x1="marker" :x2="marker" :y1="TOP - 4" :y2="baseline" class="marker" />
       <text :x="marker + (markerLabelRight ? -5 : 5)" :y="TOP - 8" class="label marker-label" :class="{ end: markerLabelRight }">
-        nu {{ currentLiters }} L
+        nu {{ markerClock ? `${markerClock} · ` : '' }}{{ currentLiters }} L
       </text>
     </svg>
 
@@ -281,6 +310,15 @@ svg.jumpable {
 .label {
   font-size: 11px;
   fill: #3e4c59;
+}
+.hour-tick {
+  stroke: #b8c2cd;
+  stroke-width: 1;
+}
+.hour-label {
+  font-size: 9px;
+  fill: #6b7785;
+  text-anchor: middle;
 }
 .label.end {
   text-anchor: end;

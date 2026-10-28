@@ -35,7 +35,8 @@ export const live = reactive({
   status: 'idle' as 'idle' | 'loading' | 'ready' | 'error',
   message: '',
   place: PLACES[0] as Place, // any place on Earth: a preset, a search result or your own location
-  playing: true,
+  following: true, // the time follows the real clock (live) until you set another moment
+  playing: false, // time-lapse (1 hour of data = 6 seconds): only after "speel af"
   secondsPerHour: 6, // time-lapse: how many real seconds one hour of the data lasts
   time: 0, // the moment being shown, as a UTC timestamp in ms
   start: 0,

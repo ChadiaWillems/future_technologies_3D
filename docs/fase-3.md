@@ -47,7 +47,13 @@ De gezondheid van de tuin stijgt met regen (`0,012 × min(neerslag, 5)` per seco
 
 ### Tijd
 
-Met echte data speelt de tijd als time-lapse (standaard 1 uur = 6 seconden). Handmatige regen speelt ook zo: 6 seconden per uur. Met echte data geldt: als de tijd pauzeert, stroomt er geen regenwater bij en gebruikt het huishouden niets (de kranen en het ventiel werken wel gewoon).
+Met echte data **volgt de tijd de echte klok** (LIVE). De regen die nu valt, vult de ton dus in echte tijd (6 mm per uur is ongeveer 135 liter per uur). Verzet je de tijd, dan blijft hij staan en volgt hij de klok niet meer; "Terug naar live" (de link onder de tijdsschuif of de spraak "terug naar live" / "ga naar nu") brengt hem terug. Het water in de ton verandert alleen als tijd verstrijkt:
+
+- **Je schuift de tijd vooruit** (schuif, klik op de grafiek of "zet de tijd op 15 uur"; hij blijft daarna staan): de regen van elk blokje van 10 minuten tussen het oude en het nieuwe moment loopt in de ton, en het huishouden gebruikt in die tijd water (de grafiek toont die lijn). Alleen binnen de afgelopen 3 dagen tot nu.
+- **Je schuift terug**: er stroomt niets weg of bij, want tijd terugdraaien is geen water terugpompen. De grafiek vergeet het stuk dat je overschrijft.
+- **"Speel af"**: de tijd loopt als time-lapse, 1 uur data = 6 seconden, vanaf het moment waarop je staat. "Pauzeer" stopt hem.
+
+De kranen en het ventiel werken altijd gewoon. Handmatige regen speelt zoals voorheen: 6 seconden per uur.
 
 ### Zichtbaar maken
 
@@ -87,7 +93,8 @@ De Web Speech API in het Nederlands (`nl-BE`), in [`src/commands.ts`](../src/com
 | "grotere ton" / "kleinere ton" | Tonvolume 100 L groter of kleiner |
 | "zet het verbruik op 30", "huishoudverbruik 25 liter per uur" | Zet het verbruik van het huishouden (0 tot 60 L/u, stappen van 5) |
 | "meer verbruik" / "minder verbruik" / "geen verbruik" | Verbruik 10 L/u hoger of lager, of op 0 |
-| "pauzeer" / "speel af" | Stopt of hervat de tijd |
+| "pauzeer" / "speel af" | Stopt de tijd of laat hem versneld lopen |
+| "terug naar live", "ga naar nu" | De tijd volgt weer de echte klok |
 | "ga naar Parijs", "zet de plaats op New York", "toon het weer in Tokio" | Zoekt de plaats op en laadt daar de echte regen (de eerste treffer van de zoekdienst) |
 
 ### Wat je ziet

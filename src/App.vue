@@ -6,7 +6,7 @@ import { speech, startListening, startWake, stopListening, stopWake } from './co
 import { WAKE_PHRASE } from './wakeWord'
 import Landscape from './components/Landscape.vue'
 import RainChart from './components/RainChart.vue'
-import { currentPosition, disableLive, enableLive, toggleManualRain } from './liveController'
+import { currentPosition, disableLive, enableLive, followLive, toggleManualRain } from './liveController'
 import { PLACES, samePlace, searchPlaces } from './liveData'
 import type { Place } from './liveData'
 import { env, live, water } from './waterState'
@@ -219,7 +219,7 @@ async function useMyLocation() {
         <template v-if="liveReady">
           <div class="clock">
             {{ env.timeLabel }}
-            <span v-if="!live.playing" class="paused">(gepauzeerd: zeg "speel af")</span>
+            <span v-if="live.following" class="live-badge">live</span>
           </div>
           <input
             v-model.number="live.time"
@@ -229,7 +229,19 @@ async function useMyLocation() {
             :max="live.end"
             :step="900000"
             aria-label="Tijd"
+            @input="live.following = false; live.playing = false"
           />
+          <p class="hint time-hint">
+            <template v-if="live.following">
+              De tijd volgt de echte klok. Verzet de schuif om een ander moment te bekijken.
+            </template>
+            <template v-else>
+              {{ live.playing ? 'De tijd loopt versneld.' : 'De tijd staat vast op dit moment.' }}
+              <button class="link" @click="followLive()">
+                Terug naar live
+              </button>
+            </template>
+          </p>
           <div class="row">
             <span>Regen</span><span>{{ env.precipitation.toFixed(1) }} mm/u</span>
           </div>
@@ -443,10 +455,29 @@ button:disabled {
   font-weight: 600;
   text-transform: capitalize;
 }
-.paused {
-  font-weight: 400;
-  color: #b3261e;
-  text-transform: none;
+.live-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: #e1f3e5;
+  color: #1f7a36;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+.time-hint {
+  margin-top: 2px;
+}
+.link {
+  flex: none;
+  padding: 0;
+  background: none;
+  color: #1d6fb8;
+  font-size: 11px;
+  text-decoration: underline;
 }
 .slider {
   width: 100%;
