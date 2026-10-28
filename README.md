@@ -2,7 +2,6 @@
 
 Een 3D-scène (TresJS / Three.js) over **regenwater opvangen**: regen valt van een wolk op het dak van een huis, loopt via de dakgoot en de regenpijp in een regenton, en dat water gebruik je voor de tuin en het huis. De scène wordt gestuurd door **echte neerslagdata** en kan je bedienen met **spraak**.
 
-![Regen met echte data en grafiek](docs/demo/02-echte-regen-grafiek.jpg)
 
 ## Starten
 
@@ -77,9 +76,6 @@ Meer uitleg, de overige constanten en de vereenvoudigingen staan in [docs/fase-3
 
 Techniek: Vue 3, TresJS 5 met `WebGPURenderer` (valt automatisch terug op WebGL2), Three.js, TypeScript, Vite.
 
-## Demo
-
-Screenshots staan in [`docs/demo/`](docs/demo). De korte video (max. 2 minuten) staat hier: *(link toevoegen)*.
 
 ## Documentatie per fase
 
@@ -89,9 +85,6 @@ Screenshots staan in [`docs/demo/`](docs/demo). De korte video (max. 2 minuten) 
 - [Reflectie](docs/reflectie.md)
 - [AI-verantwoording](docs/ai-verantwoording.md)
 
-## Live link
-
-Nog niet gepubliceerd. Met `npm install` en `npm run dev` (zie [Starten](#starten)) draait alles lokaal.
 
 ## Bronvermelding
 
