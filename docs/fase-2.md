@@ -13,7 +13,7 @@ Omdat dit een **regenproject** is, gebruik ik alleen neerslag en bewolking, plus
 | [Open-Meteo](https://open-meteo.com/) | `precipitation` (mm per uur) en `cloud_cover` (%) per uur | `fetch` naar `api.open-meteo.com/v1/forecast`, 1 dag terug en 2 dagen vooruit, `timezone=auto` |
 | [SunCalc](https://github.com/mourner/suncalc) | Hoogte en richting van zon en maan, belichting van de maan | Berekening in de browser |
 
-Open-Meteo is gratis en heeft geen sleutel nodig (CC BY 4.0, de bronvermelding staat in het paneel). Het antwoord wordt 30 minuten in `localStorage` bewaard. Als het ophalen mislukt, meldt de pagina dat en valt ze terug op de handmatige modus.
+Open-Meteo is gratis en heeft geen sleutel nodig (CC BY 4.0, de bronvermelding staat in het widget). Het antwoord wordt 30 minuten in `localStorage` bewaard. Als het ophalen mislukt, meldt de pagina dat en valt ze terug op de handmatige modus.
 
 ## Hoe de data de scène stuurt
 
@@ -22,7 +22,7 @@ Open-Meteo is gratis en heeft geen sleutel nodig (CC BY 4.0, de bronvermelding s
 | Neerslag (mm/u) | Of het regent (vanaf 0,05 mm/u), hoeveel druppels te zien zijn (280 × neerslag/3, tussen 10% en 100%) en hoeveel water het dak naar de ton stuurt |
 | Bewolking (%) | Grijsheid en grootte van de wolk, kleur van de lucht, mist en hoe fel de zon is |
 | Zonnestand (SunCalc) | Richting en kleur van de zon en haar schaduwen, dag/nacht/zonsondergang, sterren, maan, verlichte ramen 's nachts |
-| Tijd | De tijd loopt als **time-lapse** (standaard 1 uur data = 6 seconden); een tijdsschuif en de knop "Nu" om te springen |
+| Tijd | De tijd loopt als **time-lapse** (standaard 1 uur data = 6 seconden); een tijdsschuif om te springen (en klikken op de grafiek). Pauzeren en hervatten kan met de spraakcommando's "pauzeer" en "speel af" |
 
 Tussen twee uren wordt lineair geïnterpoleerd. De tijden van Open-Meteo zijn lokaal; ze worden met `utc_offset_seconds` omgezet naar echte UTC-tijden voordat SunCalc ze gebruikt.
 

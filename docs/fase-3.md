@@ -53,8 +53,8 @@ Met echte data speelt de tijd als time-lapse (standaard 1 uur = 6 seconden). Han
 
 | Wat | Waar |
 | --- | --- |
-| **Live waarde** | Paneel "Regenton": liters en procent, wat het dak levert (L/u), verbruikt, overgelopen, gezondheid van de tuin |
-| **Grafiek** | Eigen paneel rechts: waterstand als lijn en vlak, regen als staafjes, marker met het huidige niveau, rode stip als de ton vol was. Beweeg erover voor de waarden; met echte data spring je door erop te klikken. Handmatig toont hij de laatste 12 gesimuleerde uren |
+| **Live waarde** | Onderdeel "Regenton" van het widget: liters en procent, wat het dak levert (L/u), verbruikt, overgelopen, gezondheid van de tuin |
+| **Grafiek** | Onderdeel "Waterstand en regen" van het widget: waterstand als lijn en vlak, regen als staafjes, marker met het huidige niveau, rode stip als de ton vol was. Beweeg erover voor de waarden; met echte data spring je door erop te klikken. Handmatig toont hij de laatste 12 gesimuleerde uren |
 | **In de scène** | Waterniveau in de ton, overloop en plas, **niveaulamp** (groen / oranje / rood / blauw bij overloop), waterstraal bij tuinkraan en afvoerventiel, pompindicator |
 | **Regelbaar** | Sliders **Tonvolume** (de ton wordt echt groter of kleiner) en **Verbruik huishouden**, plus de tijdsschuif en de plaats |
 
@@ -92,12 +92,12 @@ De Web Speech API in het Nederlands (`nl-BE`), in [`src/commands.ts`](../src/com
 
 ### Wat je ziet
 
-Een **logboek** (paneel "Spraakcommando's" links) toont per commando wat er verstaan werd, als welk commando het begrepen werd, en wat het gevolg was. Het paneel verschijnt pas zodra je iets gezegd hebt. Een zin die niet begrepen wordt, staat er in het rood bij met voorbeelden.
+Een **logboek** (bovenaan het widget, onder de schakelaar) toont per commando wat er verstaan werd, als welk commando het begrepen werd, en wat het gevolg was. Het verschijnt pas zodra je iets gezegd hebt. Een zin die niet begrepen wordt, staat er in het rood bij met voorbeelden.
 
 ### Twee manieren om te spreken
 
-1. **Microfoonknop**: het microfoon-icoon rechtsboven in het widget "Echte neerslag". Klik, zeg één commando en de microfoon gaat weer uit. Tijdens het luisteren wordt het icoon rood en pulseert het, en onder de titel staat wat er verstaan wordt.
-2. **"Hey Regenton"**: vink "Zeg \"Hey Regenton\" om een commando te starten" aan. De microfoon blijft dan aan en wacht op de activeringszin.
+1. **Microfoonknop**: het microfoon-icoon rechtsboven in het widget. Klik, zeg één commando en de microfoon gaat weer uit. Tijdens het luisteren wordt het icoon rood en pulseert het, en onder de titel staat wat er verstaan wordt.
+2. **"Hey Regenton"**: zet de schakelaar "Zeg \"Hey Regenton\" om een commando te starten" aan. De microfoon blijft dan aan en wacht op de activeringszin.
    - "Hey Regenton, leeg de ton" werkt in één adem. Zeg je alleen "Hey Regenton", dan hoor je een korte piep, wordt het icoon rood ("Ja? Zeg je commando…") en wordt je volgende zin het commando. Na 8 seconden stilte vervalt dat.
    - Varianten die de herkenner vaak geeft worden ook aanvaard ("hey regen ton", "hoi regenton", "hallo regentom"). Er moet altijd een begroeting voor staan, zodat een gewone zin als "het regent op de ton" niets doet.
    - Alles wat je zegt zonder de activeringszin wordt genegeerd: het wordt niet getoond en niet bewaard.
@@ -108,7 +108,7 @@ De herkenning van de activeringszin staat los van de browser in [`src/wakeWord.t
 
 ### Zonder microfoon
 
-Er zijn geen knoppen of typveld meer voor de commando's (die zijn op mijn verzoek weggehaald). Werkt spraakherkenning niet (andere browser, microfoon geblokkeerd, geen netwerk), dan staat er een melding en kun je de scène nog steeds bedienen met de knoppen en sliders van de panelen zelf: regen, tonvolume, verbruik, kranen, het ventiel, de plaats en de tijd.
+Er zijn geen knoppen of typveld meer voor de commando's (die zijn op mijn verzoek weggehaald). Werkt spraakherkenning niet (andere browser, microfoon geblokkeerd, geen netwerk), dan staat er een melding en kun je de scène nog steeds bedienen met de knoppen en sliders van het widget zelf: regen, tonvolume, verbruik, kranen, het ventiel, de plaats en de tijd.
 
 ### Privacy
 

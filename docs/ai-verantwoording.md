@@ -28,6 +28,11 @@ De belangrijkste opdrachten die ik gaf (licht ingekort):
 8. "make the rain ton bigger, it can also be too full and overflow" en "let it literally flow over"
 9. "is there a way that we can use this rainwater in the house?", gevolgd door "all 3? but start with the garden tap ... make the house little bigger (not the ton) and give it a garden"
 10. "make the whole project look more realistic" en "kan je dit zo maken dat het ook werkt met WebGPU of zoiets?"
+11. "kunnen we ook locatie veranderen? en dan niet enkel de lijst die je nu hebt staan maar meer?"
+12. "dit soort spraakcommando's zouden ook geaccepteerd mogen worden: zet de ton volume op 100" (tonvolume en huishoudverbruik per spraak)
+13. "zet de knop van de spreek commando ook rechts, maar zet het in de bovenste widget als een icon", daarna "doe dit dan weg" (het Spraak-paneel met knoppen en typveld)
+14. "geef dit project een zin zoals 'hey ...' dat aangezet kan worden dat je zo commando's kan starten"
+15. "verander alle widgets naar één widget met locatie, regenton info en dan de grafiek aub met tussentitels & doe deze knoppen weg, doe de 'hey regenton' met een toggle switch ipv een check blokje"
 
 ## Wat de AI voorstelde en wat ik bijstuurde
 

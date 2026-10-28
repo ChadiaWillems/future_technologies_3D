@@ -23,16 +23,18 @@ Productiebuild: `npm run build`, en bekijken met `npm run preview`.
 
 ## Wat kan je doen?
 
+Alles zit in één widget rechtsboven met drie onderdelen: **Locatie**, **Regenton** en **Waterstand en regen** (de tussentitels kun je in- en uitklappen). Bovenaan staan het microfoon-icoon en de schakelaar voor "Hey Regenton".
+
 | Doen | Effect |
 | --- | --- |
 | Klik op de **wolk** (handmatige modus) | Het begint of stopt met regenen |
 | Knop **Echte data** | Echte neerslag en bewolking van Open-Meteo sturen de scène; de tijd loopt als time-lapse |
-| Een **plaats** kiezen, zoeken (elke plaats ter wereld) of "Gebruik mijn locatie"; **Pauze**, **Nu**, tijdsschuif | Een andere plek of een ander moment bekijken |
+| Een **plaats** kiezen, zoeken (elke plaats ter wereld) of "Gebruik mijn locatie"; de **tijdsschuif** of klikken op de grafiek | Een andere plek of een ander moment bekijken (de tijd pauzeren of hervatten kan met "pauzeer" en "speel af") |
 | Klik op de **tuinkraan** op de ton | De tuin krijgt water en het niveau zakt |
 | Klik op het **afvoerventiel** onderaan de ton | De ton loopt leeg |
 | **Kijk binnen** en klik op het toilet of de gootsteenkraan | Water uit de ton wordt in huis gebruikt (met pomp) |
 | Sliders **Tonvolume** en **Verbruik huishouden** | De ton wordt groter of kleiner; het huishouden gebruikt constant water |
-| Het **microfoon-icoon** rechtsboven, of vink **"Hey Regenton"** aan en zeg het | Spraakcommando's, zie [docs/fase-3.md](docs/fase-3.md#a-spraak) |
+| Het **microfoon-icoon** rechtsboven in het widget, of zet de schakelaar **"Hey Regenton"** aan en zeg het | Spraakcommando's, zie [docs/fase-3.md](docs/fase-3.md#a-spraak) |
 
 De lamp op de paal bij de ton toont het niveau: groen = genoeg, oranje = bijna leeg, rood = leeg, blauw = loopt over.
 
