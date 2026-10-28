@@ -120,6 +120,12 @@ function runTyped() {
         Zonnestand: SunCalc.
       </p>
     </div>
+
+    <!-- chart of the barrel level and the rain -->
+    <div class="panel">
+      <h3>Waterstand en regen</h3>
+      <RainChart />
+    </div>
   </div>
 
   <div class="hud hud-left">
@@ -148,8 +154,6 @@ function runTyped() {
       <div class="bar small">
         <div class="bar-fill garden" :style="{ width: `${gardenPercent}%` }"></div>
       </div>
-
-      <RainChart />
 
       <label class="field">
         <span>Tonvolume <b>{{ water.capacity }} L</b></span>
@@ -224,7 +228,7 @@ function runTyped() {
         </li>
       </ul>
       <p v-else class="hint">
-        Probeer: "zet de regen aan", "hoeveel water zit er in de ton", "leeg de ton", "zet de tijd op 15 uur" of "grotere ton".
+        Probeer: "zet de regen aan", "hoeveel water zit er in de ton", "leeg de ton", "zet de tijd op 15 uur", "zet de ton volume op 400" of "zet het verbruik op 30".
       </p>
     </div>
   </div>
@@ -248,6 +252,9 @@ function runTyped() {
 }
 .hud-right {
   right: 12px;
+}
+.hud-right .panel {
+  width: clamp(220px, calc(100vw - 298px), 340px);
 }
 .panel {
   width: 250px;

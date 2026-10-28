@@ -1,7 +1,7 @@
 import { shallowRef } from 'vue'
 import { fetchWeather, PLACES } from './liveData'
 import type { WeatherData } from './liveData'
-import { clearHistory, live, water } from './waterState'
+import { clearHistory, live, manualClock, water } from './waterState'
 
 export const weatherData = shallowRef<WeatherData | null>(null)
 
@@ -35,6 +35,9 @@ export function disableLive() {
   live.enabled = false
   live.status = 'idle'
   water.raining = false
+  // the manual chart starts over
+  clearHistory()
+  manualClock.time = 0
 }
 
 export function jumpToNow() {

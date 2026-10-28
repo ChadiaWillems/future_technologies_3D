@@ -54,7 +54,7 @@ Met echte data speelt de tijd als time-lapse (standaard 1 uur = 6 seconden). Han
 | Wat | Waar |
 | --- | --- |
 | **Live waarde** | Paneel "Regenton": liters en procent, wat het dak levert (L/u), verbruikt, overgelopen, gezondheid van de tuin |
-| **Grafiek** | Lijn van de waterstand over de tijd, regen als staafjes, marker op het getoonde moment, rode stip als de ton vol was (alleen met echte data) |
+| **Grafiek** | Eigen paneel rechts: waterstand als lijn en vlak, regen als staafjes, marker met het huidige niveau, rode stip als de ton vol was. Beweeg erover voor de waarden; met echte data spring je door erop te klikken. Handmatig toont hij de laatste 12 gesimuleerde uren |
 | **In de scène** | Waterniveau in de ton, overloop en plas, **niveaulamp** (groen / oranje / rood / blauw bij overloop), waterstraal bij tuinkraan en afvoerventiel, pompindicator |
 | **Regelbaar** | Sliders **Tonvolume** (de ton wordt echt groter of kleiner) en **Verbruik huishouden**, plus de tijdsschuif en de plaats |
 
@@ -71,7 +71,7 @@ Met echte data speelt de tijd als time-lapse (standaard 1 uur = 6 seconden). Han
 
 ### Techniek
 
-De Web Speech API in het Nederlands (`nl-BE`), in [`src/commands.ts`](../src/commands.ts). Een zin wordt eerst genormaliseerd (kleine letters, zonder accenten of leestekens) en daarna op trefwoorden herkend, zodat "Kan je de ton leegmaken?" en "leeg de ton" hetzelfde doen. Getallen als "vijftien uur" of "15 uur" worden beide herkend.
+De Web Speech API in het Nederlands (`nl-BE`), in [`src/commands.ts`](../src/commands.ts). Een zin wordt eerst genormaliseerd (kleine letters, zonder accenten of leestekens) en daarna op trefwoorden herkend, zodat "Kan je de ton leegmaken?" en "leeg de ton" hetzelfde doen. Getallen worden als cijfers of als Nederlandse woorden herkend ("15 uur" of "vijftien uur", "100" of "honderd", "honderdvijftig").
 
 ### Commando's
 
@@ -83,7 +83,10 @@ De Web Speech API in het Nederlands (`nl-BE`), in [`src/commands.ts`](../src/com
 | "leeg de ton" | Opent het afvoerventiel |
 | "open de kraan" / "sluit de kraan" | Tuinkraan aan of uit |
 | "zet de tijd op 15 uur" | Springt naar 15:00 (met echte data) |
-| "grotere ton" / "kleinere ton" / "zet de ton op 500 liter" | Verandert het tonvolume |
+| "zet de ton volume op 100", "tonvolume 450", "zet de ton op vijfhonderd liter" | Zet het tonvolume (100 tot 600 L, in stappen van 50; een ander getal wordt afgerond en dat staat in het antwoord) |
+| "grotere ton" / "kleinere ton" | Tonvolume 100 L groter of kleiner |
+| "zet het verbruik op 30", "huishoudverbruik 25 liter per uur" | Zet het verbruik van het huishouden (0 tot 60 L/u, stappen van 5) |
+| "meer verbruik" / "minder verbruik" / "geen verbruik" | Verbruik 10 L/u hoger of lager, of op 0 |
 | "pauzeer" / "speel af" | Stopt of hervat de tijd |
 
 ### Wat je ziet

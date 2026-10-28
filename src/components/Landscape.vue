@@ -6,7 +6,7 @@ import { toggleManualRain, weatherData } from '../liveController'
 import { formatLocal, sampleWeather, skyAt } from '../liveData'
 import { ROOF_AREA_M2, RUNOFF, stepBarrel } from '../rainModel'
 import { createSky, createTextures } from '../textures'
-import { env, live, recordLevel, water } from '../waterState'
+import { env, live, manualClock, recordLevel, water } from '../waterState'
 
 const tex = createTextures()
 const sky = createSky()
@@ -320,7 +320,12 @@ function updateEnvironment(delta: number) {
   water.fill = step.liters / water.capacity
   water.used += step.used
   water.overflowed += step.overflow
-  if (liveOn.value) { recordLevel(live.time, step.liters) }
+  // the chart: real data uses the time of the data, manual mode counts up from the start
+  if (liveOn.value) { recordLevel(live.time, step.liters, rain) }
+  else {
+    manualClock.time += hours * 3_600_000
+    recordLevel(manualClock.time, step.liters, rain)
+  }
 }
 
 // Sky gradient colours (zenith, high, horizon) for night, day, golden hour and overcast

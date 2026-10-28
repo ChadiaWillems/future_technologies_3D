@@ -53,31 +53,38 @@ export const env = reactive({
   timeLabel: '',
 })
 
-// Barrel level over the simulated time, for the chart. A point with `gap` starts a new line segment.
+// Barrel level and rainfall over the simulated time, for the chart. A point with `gap` starts a new line segment.
 export interface LevelPoint {
   t: number
   liters: number
+  /** mm per hour at that moment */
+  rain: number
   gap?: boolean
 }
 export const history = reactive({ points: [] as LevelPoint[] })
 
+// In manual mode there is no data to follow, so the simulated time simply counts up from the start (in ms)
+export const manualClock = reactive({ time: 0 })
+
 const POINT_EVERY = 10 * 60_000
-export function recordLevel(t: number, liters: number) {
+const MAX_POINTS = 1500
+export function recordLevel(t: number, liters: number, rain: number) {
   const points = history.points
   const last = points[points.length - 1]
   if (!last) {
-    points.push({ t, liters })
+    points.push({ t, liters, rain })
     return
   }
   // time went backwards (scrubbed back, or the data looped): forget the part that is replaced
   if (t < last.t) {
     while (points.length && points[points.length - 1].t >= t) { points.pop() }
-    points.push({ t, liters, gap: true })
+    points.push({ t, liters, rain, gap: true })
     return
   }
   if (t - last.t < POINT_EVERY) { return }
   // jumped far ahead: do not draw a line across the part that was skipped
-  points.push({ t, liters, gap: t - last.t > 3 * 3_600_000 })
+  points.push({ t, liters, rain, gap: t - last.t > 3 * 3_600_000 })
+  if (points.length > MAX_POINTS) { points.shift() }
 }
 export function clearHistory() {
   history.points.length = 0

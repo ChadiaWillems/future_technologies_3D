@@ -32,6 +32,11 @@ export const speech = reactive({
 // Number words that speech recognition sometimes returns instead of digits
 const NUMBER_WORDS: Record<string, number> = {
   nul: 0,
+  vijfentwintig: 25,
+  dertig: 30,
+  veertig: 40,
+  vijftig: 50,
+  zestig: 60,
   een: 1,
   twee: 2,
   drie: 3,
@@ -73,6 +78,33 @@ function findHour(text: string): number | null {
 }
 
 const has = (text: string, ...words: string[]) => words.some(word => text.includes(word))
+
+const HUNDREDS: Record<string, number> = { een: 1, twee: 2, drie: 3, vier: 4, vijf: 5, zes: 6 }
+
+/** The number in a sentence: digits ("100", "2,5") or Dutch words ("vijftig", "driehonderd", "honderdvijftig"). */
+export function findNumber(text: string): number | null {
+  const digits = text.match(/\b\d+(?:[.,]\d+)?\b/)
+  if (digits) { return Number(digits[0].replace(',', '.')) }
+  let rest = text
+  let total = 0
+  let found = false
+  const hundreds = rest.match(/\b(een|twee|drie|vier|vijf|zes)?honderd/)
+  if (hundreds) {
+    total += (hundreds[1] ? HUNDREDS[hundreds[1]] : 1) * 100
+    rest = rest.replace(hundreds[0], ' ')
+    found = true
+  }
+  for (const [word, value] of Object.entries(NUMBER_WORDS)) {
+    if (new RegExp(`\\b${word}\\b`).test(rest)) { return total + value }
+  }
+  return found ? total : null
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+/** Round to the step of a slider and keep it inside the slider */
+function toSlider(value: number, min: number, max: number, step: number) {
+  return clamp(Math.round(value / step) * step, min, max)
+}
 
 interface Command {
   id: string
@@ -161,11 +193,55 @@ const COMMANDS: Command[] = [
   {
     id: 'volume-set',
     label: 'Zet het tonvolume',
-    matches: t => /\b\d{3}\s*liter\b/.test(t) && has(t, 'ton', 'volume', 'put', 'zet', 'maak'),
+    // "zet de ton volume op 100", "tonvolume 450", "maak de ton 300 liter", "zet de ton op vijfhonderd"
+    matches: t => has(t, 'volume', 'ton', 'put', 'vat', 'regenput') && !has(t, 'verbruik', 'gebruik', 'uur', 'leeg', 'regen aan', 'regen uit')
+      && findNumber(t) !== null && has(t, 'volume', 'zet', 'maak', 'stel', 'liter'),
     run: (t) => {
-      const wanted = Number(t.match(/\b(\d{3})\s*liter\b/)![1])
-      water.capacity = Math.min(600, Math.max(100, Math.round(wanted / 50) * 50))
-      return `De ton is nu ${water.capacity} liter.`
+      const wanted = findNumber(t)!
+      const capacity = toSlider(wanted, 100, 600, 50)
+      water.capacity = capacity
+      const note = capacity === Math.round(wanted) ? '' : ` (de ton kan van 100 tot 600 liter, in stappen van 50; ${wanted} is dus ${capacity} geworden)`
+      return `De ton is nu ${capacity} liter.${note}`
+    },
+  },
+  {
+    id: 'usage-none',
+    label: 'Geen verbruik',
+    matches: t => has(t, 'geen verbruik', 'geen gebruik', 'zonder verbruik', 'verbruik uit', 'verbruik stoppen'),
+    run: () => {
+      water.usage = 0
+      return 'Het huishouden gebruikt nu geen water meer (0 liter per uur).'
+    },
+  },
+  {
+    id: 'usage-set',
+    label: 'Zet het verbruik van het huishouden',
+    // "zet het verbruik op 30", "huishoudverbruik 45 liter per uur"
+    matches: t => has(t, 'verbruik', 'gebruik') && findNumber(t) !== null,
+    run: (t) => {
+      const wanted = findNumber(t)!
+      const usage = toSlider(wanted, 0, 60, 5)
+      water.usage = usage
+      const note = usage === Math.round(wanted) ? '' : ` (het verbruik kan van 0 tot 60 liter per uur, in stappen van 5; ${wanted} is dus ${usage} geworden)`
+      return `Het huishouden gebruikt nu ${usage} liter per uur.${note}`
+    },
+  },
+  {
+    id: 'usage-more',
+    label: 'Meer verbruik',
+    matches: t => has(t, 'verbruik', 'gebruik') && has(t, 'meer', 'hoger', 'verhoog', 'omhoog', 'verhogen'),
+    run: () => {
+      water.usage = clamp(water.usage + 10, 0, 60)
+      return `Het huishouden gebruikt nu ${water.usage} liter per uur.`
+    },
+  },
+  {
+    id: 'usage-less',
+    label: 'Minder verbruik',
+    matches: t => has(t, 'verbruik', 'gebruik') && has(t, 'minder', 'lager', 'verlaag', 'omlaag', 'verlagen'),
+    run: () => {
+      water.usage = clamp(water.usage - 10, 0, 60)
+      return `Het huishouden gebruikt nu ${water.usage} liter per uur.`
     },
   },
   {
@@ -189,7 +265,7 @@ const COMMANDS: Command[] = [
   {
     id: 'time',
     label: 'Zet de tijd',
-    matches: t => has(t, 'uur') && has(t, 'tijd', 'zet', 'ga naar', 'spring'),
+    matches: t => has(t, 'uur') && has(t, 'tijd', 'zet', 'ga naar', 'spring') && !has(t, 'verbruik', 'gebruik', 'liter'),
     run: (t) => {
       const data = weatherData.value
       if (!live.enabled || !data) { return 'Zet eerst "Echte data" aan, want alleen daar loopt de tijd.' }
