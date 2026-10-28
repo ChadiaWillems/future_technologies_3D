@@ -2,7 +2,7 @@
 import { useLoop, useTres } from '@tresjs/core/webgpu'
 import { Color, Fog, Object3D } from 'three'
 import { computed, ref, watch } from 'vue'
-import { weatherData } from '../liveController'
+import { toggleManualRain, weatherData } from '../liveController'
 import { formatLocal, sampleWeather, skyAt } from '../liveData'
 import { ROOF_AREA_M2, RUNOFF, stepBarrel } from '../rainModel'
 import { createSky, createTextures } from '../textures'
@@ -148,10 +148,7 @@ function onceOnClick(action: () => void) {
   }
 }
 
-const toggleRain = onceOnClick(() => {
-  if (live.enabled) { return } // in real-data mode the weather comes from Open-Meteo
-  water.raining = !water.raining
-})
+const toggleRain = onceOnClick(() => { toggleManualRain() })
 const toggleDrain = onceOnClick(() => { water.draining = water.draining ? false : water.fill > 0 })
 const toggleGardenTap = onceOnClick(() => { water.gardenTap = water.gardenTap ? false : water.fill > 0 })
 const toggleSinkTap = onceOnClick(() => {
@@ -480,7 +477,8 @@ const starOpacity = computed(() => (1 - daylight.value) * (1 - weather.value) * 
 // windows light up when it gets dark
 const nightGlow = computed(() => (1 - daylight.value) * 0.9)
 const cloudScale = computed<[number, number, number]>(() => {
-  const s = liveOn.value ? 0.9 + 0.8 * weather.value : 1.3
+  // with real data the cloud follows the cloud cover, but it never disappears: it is also the button for manual rain
+  const s = liveOn.value ? 0.65 + 1.05 * weather.value : 1.3
   return [s, s, s]
 })
 
@@ -1152,7 +1150,6 @@ const ROCKS = [
   <TresGroup
     :position="[-3, 7.8, 0]"
     :scale="cloudScale"
-    :visible="!liveOn || env.cloud > 8 || water.raining"
     @click="toggleRain"
     @pointerenter="setCursor('pointer')"
     @pointerleave="setCursor('auto')"

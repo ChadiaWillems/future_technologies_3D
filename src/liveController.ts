@@ -40,3 +40,13 @@ export function disableLive() {
 export function jumpToNow() {
   live.time = clampTime(Date.now())
 }
+
+// Start or stop rain by hand. In real-data mode this first switches to manual mode, so the click always does something.
+export function toggleManualRain() {
+  if (live.enabled) {
+    disableLive()
+    water.raining = true
+    return
+  }
+  water.raining = !water.raining
+}

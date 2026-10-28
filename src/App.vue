@@ -5,7 +5,7 @@ import { computed, onMounted, ref } from 'vue'
 import { BUTTONS, runCommand, speech, startListening, stopListening } from './commands'
 import Landscape from './components/Landscape.vue'
 import RainChart from './components/RainChart.vue'
-import { disableLive, enableLive, jumpToNow } from './liveController'
+import { disableLive, enableLive, jumpToNow, toggleManualRain } from './liveController'
 import { PLACES } from './liveData'
 import { env, live, water } from './waterState'
 
@@ -161,7 +161,7 @@ function runTyped() {
       </label>
 
       <div class="buttons">
-        <button @click="water.raining = !water.raining; disableLive()">
+        <button @click="toggleManualRain()">
           {{ water.raining && !live.enabled ? 'Stop regen' : 'Laat regenen' }}
         </button>
         <button @click="water.cutaway = !water.cutaway">
